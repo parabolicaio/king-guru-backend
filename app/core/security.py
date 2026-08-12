@@ -98,7 +98,6 @@ def decode_token(token: str, jwt_secret: str, supabase_url: str | None = None) -
         provider=app_meta.get("provider"),
     )
 
-
 def get_token_payload(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> TokenPayload:
@@ -113,7 +112,6 @@ def get_token_payload(
         settings.supabase_jwt_secret,
         settings.supabase_url,
     )
-
 
 async def get_current_user(
     token: TokenPayload = Depends(get_token_payload),
