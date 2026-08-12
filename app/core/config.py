@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
 
     # --- App ---
-    app_env: str = "development"
+    app_env: str = "production"
     # Comma-separated list of allowed CORS origins, or "*" to allow all.
     cors_origins: str = "*"
 

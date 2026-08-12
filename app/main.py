@@ -17,8 +17,8 @@ if settings.sentry_dsn:
 app = FastAPI(
     title="KingGuru API",
     version="0.1.0",
-    docs_url="/docs" if not settings.is_production else None,
-    redoc_url="/redoc" if not settings.is_production else None,
+    # docs_url="/docs" if not settings.is_production else None,
+    # redoc_url="/redoc" if not settings.is_production else None,
     lifespan=lifespan,
 )
 
