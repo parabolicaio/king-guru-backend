@@ -1,0 +1,34 @@
+# Generated from pyproject.toml. Install with: pip install -r requirements.txt
+# For migrations (alembic upgrade) or local dev, also install requirements-dev.txt.
+
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# Database — asyncpg only; DBAPI2 drivers are never imported by app code.
+asyncpg==0.30.0
+
+# Migrations — alembic is a runtime dep so `alembic upgrade head` works in
+# production deploys; psycopg2-binary is dev/CI only (see requirements-dev.txt).
+alembic==1.14.0
+
+# Config and validation
+pydantic==2.10.3
+pydantic-settings==2.7.0
+
+# UUIDv7 — exact pin required per CLAUDE.md (OQ-5.3)
+uuid6==2025.0.1
+
+# Observability
+sentry-sdk[fastapi]==2.19.2
+
+# JWT validation (Supabase-issued tokens — RS256/ES256 requires cryptography)
+PyJWT[crypto]==2.10.1
+
+# Async HTTP — Supabase Admin API calls (sign-out, claim updates)
+httpx==0.28.1
+
+# IANA timezone database — required on Windows and minimal Linux containers
+# where the OS does not ship tzdata (zoneinfo needs this for Asia/Colombo)
+tzdata==2025.2

@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kingguru-backend"
+version = "0.1.0"
+description = "KingGuru EdTech API"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.32.1",
+    "python-multipart==0.0.20",
+    # Database — asyncpg only; DBAPI2 drivers are never imported by app code.
+    "asyncpg==0.30.0",
+    # Migrations — alembic is a runtime dep so `alembic upgrade head` works in
+    # production deploys; psycopg2-binary is dev/CI only (see [migrations] extra).
+    "alembic==1.14.0",
+    # Config and validation
+    "pydantic==2.10.3",
+    "pydantic-settings==2.7.0",
+    # UUIDv7 — exact pin required per CLAUDE.md (OQ-5.3)
+    "uuid6==2025.0.1",
+    # Observability
+    "sentry-sdk[fastapi]==2.19.2",
+    # JWT validation (Supabase-issued tokens — RS256/ES256 requires cryptography)
+    "PyJWT[crypto]==2.10.1",
+    # Async HTTP — Supabase Admin API calls (sign-out, claim updates)
+    "httpx==0.28.1",
+    # IANA timezone database — required on Windows and minimal Linux containers
+    # where the OS does not ship tzdata (zoneinfo needs this for Asia/Colombo)
+    "tzdata==2025.2",
+]
+
+[project.optional-dependencies]
+# Install with: pip install -e ".[migrations]"
+# Required when running `alembic upgrade` (CI, deploy scripts, local setup).
+# Never imported by the FastAPI application server.
+migrations = [
+    "psycopg2-binary==2.9.10",
+]
+dev = [
+    "psycopg2-binary==2.9.10",   # needed locally to run migrations
+    "pytest==8.3.4",
+    "pytest-asyncio==0.24.0",
+    "ruff==0.8.4",
+    # httpx is a main dep (needed at runtime for Supabase Admin API);
+    # listed here so `pip install -e ".[dev]"` still satisfies test imports.
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
