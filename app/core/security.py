@@ -1,5 +1,4 @@
 """JWT validation and FastAPI authentication dependencies."""
-
 import logging
 from dataclasses import dataclass
 from functools import lru_cache
@@ -38,7 +37,6 @@ class TokenPayload:
     admin_role: str | None
     provider: str | None
 
-
 def decode_token(token: str, jwt_secret: str, supabase_url: str | None = None) -> TokenPayload:
     """Validate a Supabase JWT and return its key claims.
 
@@ -67,6 +65,10 @@ def decode_token(token: str, jwt_secret: str, supabase_url: str | None = None) -
                 jwt_secret,
                 algorithms=[alg],
                 options={"verify_aud": False},
+                # Tolerates clock skew between the machine that minted the
+                # token (Supabase) and this server — without it, a few
+                # seconds of drift raises ImmatureSignatureError on `iat`.
+                leeway=30,
             )
         else:
             if not supabase_url:
@@ -78,6 +80,7 @@ def decode_token(token: str, jwt_secret: str, supabase_url: str | None = None) -
                 signing_key.key,
                 algorithms=[alg],
                 options={"verify_aud": False},
+                leeway=30,
             )
     except jwt.ExpiredSignatureError:
         raise AppError(*JWT_EXPIRED)
