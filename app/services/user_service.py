@@ -14,6 +14,7 @@ from app.db.queries.users import (
     create_user,
     get_guest_user_by_token,
     get_user_by_supabase_uid,
+    reactivate_deleted_user,
     soft_delete_user,
 )
 from app.schemas.users import SignupRequest, UserProfile
@@ -158,31 +159,29 @@ async def create_account(
     from app.services import audit_service, guest_service
     from app.db.queries.levels import get_level_by_id
     from app.db.queries.placement import set_user_level_and_placement
-    from app.core.errors import AppError, LEVEL_NOT_ACTIVE, LEVEL_NOT_FOUND, LEVEL_NOT_SET
+    from app.core.errors import AppError, LEVEL_NOT_ACTIVE, LEVEL_NOT_FOUND
 
     row = await get_user_by_supabase_uid(conn, token.supabase_uid)
 
     if row is not None and row["deleted_at"] is not None:
-        from app.core.errors import USER_DELETED
-        raise AppError(*USER_DELETED)
+        # This phone's Supabase Auth identity outlives our own soft-delete
+        # (Supabase won't issue a second identity for the same phone), so a
+        # repeat sign-up resolves back to this same row. Recycle it into a
+        # clean-slate account instead of blocking forever — the deletion
+        # already happened; there's nothing left to "continue".
+        await reactivate_deleted_user(conn, str(row["id"]), token.phone, token.email)
+        row = await get_user_by_supabase_uid(conn, token.supabase_uid)
 
     # Idempotent — already fully signed up (e.g. double-tap, retry)
     if row is not None and row["onboarding_completed_at"] is not None:
         return _row_to_profile(row)
 
-    # Non-admin users must provide a level — either explicitly or via guest transfer
-    is_admin = token.admin_role is not None
-    if not is_admin and body.placement_level_id is None:
-        # Allow if the guest token carries a level (it will be transferred in reattribute)
-        guest_has_level = False
-        if body.guest_token:
-            guest_row = await conn.fetchrow(
-                'SELECT current_level_id FROM "user" WHERE guest_token = $1 AND is_guest = TRUE AND deleted_at IS NULL',
-                body.guest_token,
-            )
-            guest_has_level = guest_row is not None and guest_row["current_level_id"] is not None
-        if not guest_has_level:
-            raise AppError(*LEVEL_NOT_SET)
+    # A level is no longer required at sign-up time — placement (quiz or
+    # manual select) now happens AFTER account creation, so a brand new
+    # account legitimately has no current_level_id yet. RequireOnboarding
+    # (frontend) routes a level-less authenticated user to /placement itself;
+    # this used to hard-block sign-up here when the old flow required a level
+    # to already be picked before an account existed, which no longer holds.
 
     # Validate placement level before any writes so we fail fast and clean
     if body.placement_level_id is not None:
@@ -245,17 +244,21 @@ async def delete_account(
     supabase_uid: str,
 ) -> None:
     """Soft-delete the user row, anonymise PII, revoke Supabase sessions,
-    purge uploaded recordings.
+    delete the Supabase Auth identity, purge uploaded recordings.
 
     Order: DB soft-delete first (reversible by ops if a Supabase call fails),
-    then Supabase sign-out, then Storage purge of the user's pronunciation
-    recordings (both swallow errors), then audit log.
+    then Supabase sign-out, then permanently deleting the Supabase Auth user
+    (frees the phone number for a future sign-up — without this, a repeat
+    sign-up resolves back to this same, now soft-deleted, identity), then
+    Storage purge of the user's pronunciation recordings (all three swallow
+    errors), then audit log.
     """
     from app.core import supabase_admin
     from app.services import audit_service
 
     await soft_delete_user(conn, user_id)
     await supabase_admin.sign_out_user(supabase_uid)
+    await supabase_admin.delete_user(supabase_uid)
     await supabase_admin.delete_user_recordings(user_id)
     await audit_service.log(
         conn,

@@ -48,6 +48,7 @@ LEVEL_NOT_FOUND  = ("LEVEL_NOT_FOUND",  "Level not found.",                     
 LEVEL_NOT_ACTIVE = ("LEVEL_NOT_ACTIVE", "Level is not currently active.",                         400)
 LEVEL_NOT_SET    = ("LEVEL_NOT_SET",    "No level assigned. Complete placement to continue.",     400)
 ALREADY_PLACED   = ("ALREADY_PLACED",   "Placement already completed.",                           409)
+LEVEL_PAYMENT_REQUIRED = ("LEVEL_PAYMENT_REQUIRED", "This level requires payment to unlock.",      403)
 
 # ── Lessons ───────────────────────────────────────────────────────────────────
 LESSON_NOT_FOUND    = ("LESSON_NOT_FOUND",    "Lesson not found.",         404)

@@ -4,9 +4,10 @@ from pydantic import BaseModel
 
 import asyncpg
 
-from app.core.errors import AppError, UNAUTHORIZED
+from app.core.errors import AppError, UNAUTHORIZED, LEVEL_NOT_FOUND, LEVEL_PAYMENT_REQUIRED
 from app.core.security import get_optional_user
 from app.db.pool import get_db
+from app.db.queries.levels import get_level_by_id
 from app.db.queries.placement import get_placement_questions
 from app.schemas.placement import (
     PlacementChooseLevelRequest,
@@ -158,15 +159,25 @@ async def choose_level(
     user: asyncpg.Record | None = Depends(get_optional_user),
     db: asyncpg.Connection = Depends(get_db),
 ) -> PlacementChooseLevelResponse:
-    """Persist the user's chosen level.
+    """Persist the user's chosen level — the MANUAL self-selection path only.
 
     Works pre-auth (X-Guest-Token) so the level is stored on the guest row
     and transferred to the real account on sign-up via reattribute().
     Requires at least one of: valid JWT or X-Guest-Token.
+
+    Only this endpoint enforces payment_required — the placement-quiz
+    recommendation path (submit_placement's confirm_level_id, below) calls
+    placement_service.choose_level() directly and stays exempt by design.
     """
     tracking_id = await _resolve_tracking_id(user, x_guest_token, db)
     if tracking_id is None:
         raise AppError(*UNAUTHORIZED)
+
+    level = await get_level_by_id(db, str(body.level_id))
+    if level is None:
+        raise AppError(*LEVEL_NOT_FOUND)
+    if level["payment_required"]:
+        raise AppError(*LEVEL_PAYMENT_REQUIRED)
 
     row = await placement_service.choose_level(db, tracking_id, str(body.level_id))
     return PlacementChooseLevelResponse(

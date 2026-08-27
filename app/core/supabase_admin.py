@@ -1,9 +1,10 @@
 """Supabase Admin API client.
 
-Used for three operations:
+Used for four operations:
   1. Revoke all sessions for a user (on DELETE /users/me)
   2. Update app_metadata JWT claim (on admin role change — Slice 8)
   3. Purge a user's uploaded recordings from Storage (on DELETE /users/me)
+  4. Permanently delete the Supabase Auth identity (on DELETE /users/me)
 
 All calls use the service-role key with no retry logic.  Failures are logged
 and swallowed so a Supabase API outage never blocks a DB-level operation.
@@ -115,6 +116,33 @@ async def delete_user_recordings(user_id: str) -> None:
                 )
     except Exception:
         logger.exception("Supabase recordings purge failed for user_id=%s", user_id)
+
+
+async def delete_user(supabase_uid: str) -> None:
+    """Permanently delete the Supabase Auth identity for the given user.
+
+    Called during account deletion, alongside sign_out_user. Without this,
+    the phone number stays claimed in Supabase's own auth.users table
+    forever: a later sign-up attempt for the same number resolves OTP
+    verification back to this same (soft-deleted) supabase_uid instead of
+    creating a fresh identity, and the app then rejects it as USER_DELETED.
+    Swallows errors like the other admin calls here — the DB-level
+    soft-delete has already happened and must not be rolled back if Supabase
+    is unreachable.
+    """
+    url = f"{settings.supabase_url}/auth/v1/admin/users/{supabase_uid}"
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            resp = await client.delete(url, headers=_headers())
+            if resp.status_code not in (200, 204):
+                logger.warning(
+                    "Supabase user delete returned %s for uid=%s: %s",
+                    resp.status_code,
+                    supabase_uid,
+                    resp.text,
+                )
+    except Exception:
+        logger.exception("Supabase user delete failed for uid=%s", supabase_uid)
 
 
 async def update_admin_role_claim(supabase_uid: str, admin_role: str | None) -> None:

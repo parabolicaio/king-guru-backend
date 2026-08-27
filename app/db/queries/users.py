@@ -272,3 +272,45 @@ async def soft_delete_user(
         """,
         user_id, now, anon,
     )
+
+
+async def reactivate_deleted_user(
+    conn: asyncpg.Connection,
+    user_id: str,
+    phone: str | None,
+    email: str | None,
+) -> None:
+    """Recycle a soft-deleted row into a genuinely fresh account.
+
+    A phone number's Supabase Auth identity persists even after our own
+    soft-delete (Supabase doesn't let two identities share a phone), so a
+    repeat sign-up's OTP verification resolves back to this same row instead
+    of creating a new one. Rather than blocking that sign-up forever, this
+    resets the row to a clean-slate state — restores the real phone/email,
+    clears deleted_at and every progress/stat field, and strips admin_role so
+    a deleted admin's privileges never carry over to whoever signs up next
+    with that number. full_name/age_group/role_tag/language_preference are
+    left alone here — create_account's complete_onboarding() call
+    immediately after this overwrites them with the new sign-up's data.
+    """
+    now = datetime.now(timezone.utc)
+    await conn.execute(
+        """
+        UPDATE "user"
+        SET deleted_at                = NULL,
+            phone                     = $2,
+            email                     = $3,
+            onboarding_completed_at   = NULL,
+            placement_completed_at    = NULL,
+            current_level_id          = NULL,
+            xp_total                  = 0,
+            streak_current            = 0,
+            streak_longest            = 0,
+            streak_last_activity_date = NULL,
+            subscription_tier         = 'free',
+            admin_role                = NULL,
+            updated_at                = $4
+        WHERE id = $1::uuid
+        """,
+        user_id, phone, email, now,
+    )

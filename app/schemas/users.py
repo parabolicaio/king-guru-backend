@@ -4,7 +4,7 @@ from pydantic import BaseModel, field_validator
 
 _AGE_GROUPS = ("under_15", "15_18", "19_25", "26_40", "40_plus")
 _ROLE_TAGS = ("school_student", "university_student", "working_adult", "other")
-_LANGUAGES = ("en", "si", "singlish")
+_LANGUAGES = ("en", "si")
 _ENGLISH_LEVELS = ("none", "little", "conversational", "good")
 
 
