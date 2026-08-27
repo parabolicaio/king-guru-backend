@@ -58,7 +58,7 @@ _SIGNUP_BODY = {
     "age_group": "19_25",
     "role_tag": "working_adult",
     "english_level": "little",
-    "language_preference": "singlish",
+    "language_preference": "en",
 }
 
 _LEVEL_ID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"

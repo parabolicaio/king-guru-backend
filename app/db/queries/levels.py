@@ -18,7 +18,8 @@ async def get_level_by_id(db: asyncpg.Connection, level_id: str) -> asyncpg.Reco
     return await db.fetchrow(
         """
         SELECT id, code, name, description, display_order,
-               daily_essay_enabled, is_active, translations, icon_url, topics
+               daily_essay_enabled, is_active, translations, icon_url, topics,
+               guest_enabled, payment_required
         FROM level
         WHERE id = $1
         """,
