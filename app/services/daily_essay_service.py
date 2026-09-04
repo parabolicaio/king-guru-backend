@@ -555,22 +555,42 @@ async def _call_gemini(
         f"{model}:generateContent"
     )
 
+    # Gemini's 503 "high demand" errors are explicitly documented as usually
+    # transient — this runs as a background task after submission (not on
+    # the request path), and Daily Essay allows only one attempt per day, so
+    # a single retry-less 503 previously meant a permanent F + empty
+    # feedback for the user's whole day over a moment of Gemini capacity,
+    # not anything about their essay. Retry the two retryable cases
+    # (503 overloaded, 429 rate-limited) a couple of times with backoff
+    # before giving up and falling back to _default_failed_grade.
+    _RETRYABLE_STATUSES = {429, 503}
+    _MAX_ATTEMPTS = 3
+    import asyncio
+
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            gemini_url,
-            params={"key": settings.gemini_api_key},
-            json={
-                "system_instruction": {"parts": [{"text": system_prompt}]},
-                "contents": [{"parts": [{"text": user_msg}]}],
-                "generationConfig": {"responseMimeType": "application/json"},
-            },
-        )
-        if resp.is_error:
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            resp = await client.post(
+                gemini_url,
+                params={"key": settings.gemini_api_key},
+                json={
+                    "system_instruction": {"parts": [{"text": system_prompt}]},
+                    "contents": [{"parts": [{"text": user_msg}]}],
+                    "generationConfig": {"responseMimeType": "application/json"},
+                },
+            )
+            if not resp.is_error:
+                break
             body_preview = resp.text[:500] if resp.text else "(empty)"
+            if resp.status_code in _RETRYABLE_STATUSES and attempt < _MAX_ATTEMPTS:
+                logger.warning(
+                    "daily_essay gemini retryable error status=%s attempt=%d/%d body=%s",
+                    resp.status_code, attempt, _MAX_ATTEMPTS, body_preview,
+                )
+                await asyncio.sleep(2 * attempt)
+                continue
             logger.error(
-                "daily_essay gemini http error status=%s body=%s",
-                resp.status_code,
-                body_preview,
+                "daily_essay gemini http error status=%s attempt=%d/%d body=%s",
+                resp.status_code, attempt, _MAX_ATTEMPTS, body_preview,
             )
             resp.raise_for_status()
         data = resp.json()

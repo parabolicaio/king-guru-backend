@@ -48,6 +48,21 @@ class Settings(BaseSettings):
     # --- Sentry (optional; disabled when empty) ---
     sentry_dsn: str = ""
 
+    # --- OnePay (payment gateway) ---
+    # From your OnePay merchant dashboard — sandbox and live each have their
+    # own App ID/Hash Salt pair. Hash Salt is a secret: server-side only,
+    # never sent to the frontend or included in any client-visible response.
+    onepay_app_id: str = ""
+    onepay_hash_salt: str = ""
+    # Not documented on OnePay's public docs site at all — discovered live:
+    # requests without an Authorization header 401 with "Please provide
+    # request headers". Whatever your dashboard calls "App Token" goes here.
+    onepay_app_token: str = ""
+    onepay_base_url: str = "https://api.onepay.lk"
+    # Where the frontend sends the customer after they finish on OnePay's
+    # hosted page — the frontend route that polls our own payment status.
+    onepay_redirect_url: str = "http://localhost:5173/payment/return"
+
     # --- App ---
     app_env: str = "production"
     # Comma-separated list of allowed CORS origins, or "*" to allow all.

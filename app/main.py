@@ -68,6 +68,7 @@ from app.api.v1 import leaderboard as leaderboard_router      # noqa: E402
 from app.api.v1 import daily_essay as daily_essay_router      # noqa: E402
 from app.api.v1 import daily_goal as daily_goal_router        # noqa: E402
 from app.api.v1 import meta as meta_router                    # noqa: E402
+from app.api.v1 import payments as payments_router            # noqa: E402
 
 app.include_router(auth_router.router)
 app.include_router(meta_router.router)
@@ -83,6 +84,7 @@ app.include_router(notifications_router.router)
 app.include_router(achievements_router.router)
 app.include_router(leaderboard_router.router)
 app.include_router(daily_essay_router.router)
+app.include_router(payments_router.router)
 app.include_router(daily_goal_router.router)
 
 # ---------------------------------------------------------------------------
