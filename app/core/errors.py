@@ -50,6 +50,12 @@ LEVEL_NOT_SET    = ("LEVEL_NOT_SET",    "No level assigned. Complete placement t
 ALREADY_PLACED   = ("ALREADY_PLACED",   "Placement already completed.",                           409)
 LEVEL_PAYMENT_REQUIRED = ("LEVEL_PAYMENT_REQUIRED", "This level requires payment to unlock.",      403)
 
+# ── Payments ──────────────────────────────────────────────────────────────────
+LEVEL_NOT_PAID           = ("LEVEL_NOT_PAID", "This level doesn't require payment.",                          400)
+LEVEL_PRICE_NOT_SET      = ("LEVEL_PRICE_NOT_SET", "Pricing isn't configured for this level yet.",            409)
+PAYMENT_NOT_FOUND        = ("PAYMENT_NOT_FOUND", "Payment not found.",                                        404)
+PAYMENT_GATEWAY_ERROR    = ("PAYMENT_GATEWAY_ERROR", "Payment gateway error. Please try again.",              502)
+
 # ── Lessons ───────────────────────────────────────────────────────────────────
 LESSON_NOT_FOUND    = ("LESSON_NOT_FOUND",    "Lesson not found.",         404)
 LESSON_LOCKED       = ("LESSON_LOCKED",       "Lesson is locked.",         403)

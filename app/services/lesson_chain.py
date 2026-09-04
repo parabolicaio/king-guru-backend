@@ -47,9 +47,13 @@ async def get_lessons_with_progress(
     """Return approved, non-archived, non-deleted lessons for a level,
     each annotated with the user's progress state.
 
-    user_id may be None (guest / anonymous) — the progress LEFT JOIN then
-    matches nothing (lp.user_id = NULL is never true), so every lesson comes
-    back with no progress, which is the correct guest view."""
+    Callers pass a guest's resolved user_id here too (their real row in
+    "user", is_guest=TRUE — the same one submit_attempt records progress
+    under), not their guest_token, so a guest with real progress sees it.
+    user_id is None only for a request with no identity at all (shouldn't
+    normally reach lesson content) — the progress LEFT JOIN then matches
+    nothing (lp.user_id = NULL is never true), so every lesson comes back
+    with no progress."""
 
     lessons = await db.fetch(
         """

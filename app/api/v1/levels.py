@@ -29,6 +29,8 @@ async def list_levels(
                 topics=list(row["topics"] or []),
                 guest_enabled=row["guest_enabled"],
                 payment_required=row["payment_required"],
+                price_amount=row["price_amount"],
+                price_currency=row["price_currency"],
             )
             for row in rows
         ]

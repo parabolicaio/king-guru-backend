@@ -66,6 +66,21 @@ class LessonSection(BaseModel):
     content_blocks: list[ContentBlock] = []
     questions: list[QuestionInLesson] = []
     vocabulary_words: list[VocabularyWordInLesson] = []
+    # Furthest position reached in this section's content+question sequence
+    # (LessonSectionPage.tsx's buildSteps()/stepIdx) — lets the overview
+    # screen show partial progress even before any question is answered.
+    furthest_step_index: int = 0
+    total_steps: int = 0
+
+
+class SectionProgressRequest(BaseModel):
+    step_index: int
+    total_steps: int
+
+
+class SectionProgressResponse(BaseModel):
+    furthest_step_index: int
+    total_steps: int
 
 
 class LessonDetail(BaseModel):

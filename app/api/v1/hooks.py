@@ -113,7 +113,13 @@ async def send_sms_hook(request: Request) -> dict:
 
     message = f"Your KingGuru verification code is {otp}. Valid for 10 minutes. Do not share this code."
 
-    async with httpx.AsyncClient(timeout=4.0) as client:
+    # Supabase gives this whole hook call a hard 5s ceiling from ITS side —
+    # that includes network time to reach us (Vercel cold start included,
+    # since Supabase can only call a public URL, never localhost) plus
+    # whatever we spend here. A 4s allowance to text.lk left almost no
+    # margin; tightened so a slow text.lk response fails fast enough for
+    # our own response to still land inside Supabase's window.
+    async with httpx.AsyncClient(timeout=2.5) as client:
         try:
             response = await client.post(
                 TEXT_LK_SEND_URL,
