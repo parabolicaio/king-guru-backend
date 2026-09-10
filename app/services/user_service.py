@@ -159,7 +159,7 @@ async def create_account(
     from app.services import audit_service, guest_service
     from app.db.queries.levels import get_level_by_id
     from app.db.queries.placement import set_user_level_and_placement
-    from app.core.errors import AppError, LEVEL_NOT_ACTIVE, LEVEL_NOT_FOUND
+    from app.core.errors import AppError, LEVEL_NOT_ACTIVE, LEVEL_NOT_FOUND, LEVEL_PAYMENT_REQUIRED
 
     row = await get_user_by_supabase_uid(conn, token.supabase_uid)
 
@@ -183,13 +183,22 @@ async def create_account(
     # this used to hard-block sign-up here when the old flow required a level
     # to already be picked before an account existed, which no longer holds.
 
-    # Validate placement level before any writes so we fail fast and clean
+    # Validate placement level before any writes so we fail fast and clean.
+    # payment_required is enforced here too, not just in POST
+    # /placement/choose-level — a guest picking a locked level's "Buy now"
+    # sets this same field before ever reaching signup (PlacementSelectLevelPage
+    # -> pendingLevelId -> SignupRequest.placement_level_id), so without this
+    # check signup silently grants any paid level for free. The placement-quiz
+    # path stays exempt: it goes through POST /placement/submit after signup,
+    # never through this field.
     if body.placement_level_id is not None:
         level = await get_level_by_id(conn, body.placement_level_id)
         if level is None:
             raise AppError(*LEVEL_NOT_FOUND)
         if not level["is_active"]:
             raise AppError(*LEVEL_NOT_ACTIVE)
+        if level["payment_required"]:
+            raise AppError(*LEVEL_PAYMENT_REQUIRED)
 
     # All writes below run in one transaction so a mid-sequence failure can't
     # leave a half-created account, and a retry can't double-apply reattribute's

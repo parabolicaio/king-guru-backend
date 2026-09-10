@@ -93,6 +93,21 @@ async def send_sms_hook(request: Request) -> dict:
     Supabase calls this endpoint instead of Twilio when phone OTP is requested.
     Verifies the request signature, then forwards the OTP to the recipient via text.lk.
     Returns an empty 200 on success; any non-2xx causes Supabase to surface an error.
+
+    Note on a real constraint here: Supabase gives this whole hook call a
+    hard 5s ceiling from ITS side, which includes network time to reach us
+    (Vercel cold start included, since Supabase can only call a public URL,
+    never localhost) on top of whatever we spend here — so a slow-but-
+    eventually-successful text.lk response can still cause Supabase to show
+    "Failed to reach hook" even though the SMS goes out fine. FastAPI's
+    BackgroundTasks would sidestep that by answering Supabase before calling
+    text.lk, but that's unsafe on Vercel specifically: a serverless instance
+    can be frozen or recycled immediately after the response is sent, before
+    a background task finishes, so it risks the SMS silently never sending
+    at all — worse than this timeout warning, which is at least harmless.
+    Genuinely fixing this needs a real queue/worker outside this request-
+    response cycle, not a same-process fix, so this stays synchronous with
+    the tightest safe timeout instead.
     """
     body_bytes = await request.body()
 
@@ -113,12 +128,6 @@ async def send_sms_hook(request: Request) -> dict:
 
     message = f"Your KingGuru verification code is {otp}. Valid for 10 minutes. Do not share this code."
 
-    # Supabase gives this whole hook call a hard 5s ceiling from ITS side —
-    # that includes network time to reach us (Vercel cold start included,
-    # since Supabase can only call a public URL, never localhost) plus
-    # whatever we spend here. A 4s allowance to text.lk left almost no
-    # margin; tightened so a slow text.lk response fails fast enough for
-    # our own response to still land inside Supabase's window.
     async with httpx.AsyncClient(timeout=2.5) as client:
         try:
             response = await client.post(

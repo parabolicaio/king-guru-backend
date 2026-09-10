@@ -56,6 +56,10 @@ LEVEL_PRICE_NOT_SET      = ("LEVEL_PRICE_NOT_SET", "Pricing isn't configured for
 PAYMENT_NOT_FOUND        = ("PAYMENT_NOT_FOUND", "Payment not found.",                                        404)
 PAYMENT_GATEWAY_ERROR    = ("PAYMENT_GATEWAY_ERROR", "Payment gateway error. Please try again.",              502)
 
+# ── Saved Cards (Card on File) ──────────────────────────────────────────────────
+CARD_NOT_FOUND = ("CARD_NOT_FOUND", "Saved card not found.",                    404)
+CARD_NOT_OWNED = ("CARD_NOT_OWNED", "This card doesn't belong to your account.", 403)
+
 # ── Lessons ───────────────────────────────────────────────────────────────────
 LESSON_NOT_FOUND    = ("LESSON_NOT_FOUND",    "Lesson not found.",         404)
 LESSON_LOCKED       = ("LESSON_LOCKED",       "Lesson is locked.",         403)
