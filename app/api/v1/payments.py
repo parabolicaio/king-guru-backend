@@ -11,8 +11,9 @@ from app.core.ratelimit import rate_limit
 from app.core.security import get_current_user
 from app.db.pool import get_db
 from app.db.queries.levels import get_level_by_id
+from app.schemas.cards import CheckoutSavedCardRequest
 from app.schemas.levels import CreateCheckoutRequest, CreateCheckoutResponse, PaymentStatusResponse
-from app.services import payment_service
+from app.services import card_service, payment_service
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,22 @@ async def get_payment_status(
         amount=payment["amount"],
         currency=payment["currency"],
     )
+
+
+@router.post(
+    "/checkout-saved-card",
+    dependencies=[Depends(rate_limit(10, 60, "payment_checkout_saved_card"))],
+)
+async def checkout_saved_card(
+    body: CheckoutSavedCardRequest,
+    user: asyncpg.Record = Depends(get_current_user),
+    db: asyncpg.Connection = Depends(get_db),
+) -> dict:
+    """Charges an existing saved card directly and grants the level on
+    success — the payoff of Card on File: a returning payer completes a
+    purchase in one call, no redirect/WebView needed."""
+    await card_service.charge_with_saved_card(db, dict(user), body.token_id, str(body.level_id))
+    return {"success": True}
 
 
 @router.post("/webhook")

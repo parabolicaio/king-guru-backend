@@ -62,6 +62,17 @@ class Settings(BaseSettings):
     # Where the frontend sends the customer after they finish on OnePay's
     # hosted page — the frontend route that polls our own payment status.
     onepay_redirect_url: str = "http://localhost:5173/payment/return"
+    # Card on File (Customer Tokenizer) — a SEPARATE OnePay API from the
+    # Redirection checkout above: different credential (an "Access Token",
+    # not app_id/hash_salt/app_token) and a different auth scheme (raw
+    # token in the Authorization header, no hash). Get this from the OnePay
+    # dashboard's Customer Tokenizer / Card on File section, not the same
+    # place as the App Token above.
+    onepay_access_token: str = ""
+    # Where OnePay sends the customer back after adding a card — distinct
+    # from onepay_redirect_url so the frontend can tell a card-add return
+    # apart from a payment-checkout return.
+    onepay_card_redirect_url: str = "http://localhost:5173/payment/card-return"
 
     # --- App ---
     app_env: str = "production"
