@@ -1,7 +1,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 
 class LevelResponse(BaseModel):
@@ -18,6 +18,13 @@ class LevelResponse(BaseModel):
     payment_required: bool = False
     price_amount: Decimal | None = None
     price_currency: str = "LKR"
+
+    # Pydantic v2 serializes Decimal to a JSON *string* by default (to avoid
+    # float precision loss) — every non-Python client (mobile's Dart `as num`
+    # cast included) expects a JSON number here, so serialize explicitly.
+    @field_serializer("price_amount")
+    def _serialize_price_amount(self, v: Decimal | None) -> float | None:
+        return float(v) if v is not None else None
 
 
 class LevelsListResponse(BaseModel):
@@ -40,3 +47,7 @@ class PaymentStatusResponse(BaseModel):
     level_name: str
     amount: Decimal
     currency: str
+
+    @field_serializer("amount")
+    def _serialize_amount(self, v: Decimal) -> float:
+        return float(v)
