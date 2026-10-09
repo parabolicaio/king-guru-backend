@@ -25,6 +25,15 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
+    # CORS_ORIGINS is a fixed allow-list (prod domains + the React
+    # frontend's pinned Vite ports) — `flutter run -d chrome` instead picks
+    # a random port per run, so it never matches and every request gets
+    # silently dropped by the browser (opaque "XMLHttpRequest onError", no
+    # detail — CORS failures never surface a reason to JS). Any localhost
+    # origin can only come from software already running on the requesting
+    # machine, so allowing all of them is standard dev-convenience practice
+    # with no real attack-surface cost, even against this prod backend.
+    allow_origin_regex=r"^https?://localhost(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
