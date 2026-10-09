@@ -29,6 +29,8 @@ def _derive_auth_provider(token: TokenPayload) -> str:
     """
     if token.provider == "google":
         return "google"
+    if token.provider == "apple":
+        return "apple"
     if token.provider == "phone" or (token.phone and not token.email):
         return "phone"
     if token.provider == "email" or token.email:
