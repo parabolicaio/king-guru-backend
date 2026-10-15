@@ -267,10 +267,30 @@ async def soft_delete_user(
             email       = $3,
             phone       = $3,
             avatar_url  = NULL,
+            apple_refresh_token = NULL,
             updated_at  = $2
         WHERE id = $1::uuid AND deleted_at IS NULL
         """,
         user_id, now, anon,
+    )
+
+
+async def get_apple_refresh_token(
+    conn: asyncpg.Connection, user_id: str
+) -> str | None:
+    row = await conn.fetchrow(
+        'SELECT apple_refresh_token FROM "user" WHERE id = $1::uuid',
+        user_id,
+    )
+    return row["apple_refresh_token"] if row else None
+
+
+async def set_apple_refresh_token(
+    conn: asyncpg.Connection, user_id: str, refresh_token: str
+) -> None:
+    await conn.execute(
+        'UPDATE "user" SET apple_refresh_token = $2, updated_at = $3 WHERE id = $1::uuid',
+        user_id, refresh_token, datetime.now(timezone.utc),
     )
 
 

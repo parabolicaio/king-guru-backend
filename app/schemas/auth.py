@@ -31,3 +31,7 @@ class GuestSessionResponse(BaseModel):
 
 class CheckPhoneResponse(BaseModel):
     exists: bool
+
+
+class AppleLinkRequest(BaseModel):
+    authorization_code: str

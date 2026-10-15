@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import ValidationError
 
 from app.core.errors import AppError, GUEST_TOKEN_INVALID
 from app.core.ratelimit import rate_limit
-from app.core.security import TokenPayload, get_token_payload
+from app.core.security import TokenPayload, get_current_user, get_token_payload
 from app.db.pool import get_db
 from app.db.queries.users import phone_exists
 from app.schemas.auth import (
+    AppleLinkRequest,
     CheckPhoneResponse,
     GuestSessionRequest,
     GuestSessionResponse,
@@ -89,3 +90,20 @@ async def create_guest_session(
         guest_token=row["guest_token"],
         created_at=row["created_at"],
     )
+
+
+@router.post("/auth/apple/link", status_code=204)
+async def link_apple_account(
+    body: AppleLinkRequest,
+    row: asyncpg.Record = Depends(get_current_user),
+    conn: asyncpg.Connection = Depends(get_db),
+) -> Response:
+    """Store an Apple refresh_token derived from a sign-in's authorization_code.
+
+    Called by the mobile app right after a successful native Apple sign-in.
+    Best-effort — see user_service.link_apple_account docstring. Always
+    returns 204 even if the exchange silently failed, since the sign-in
+    itself has already succeeded and nothing about this call should block it.
+    """
+    await user_service.link_apple_account(conn, str(row["id"]), body.authorization_code)
+    return Response(status_code=204)
