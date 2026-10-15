@@ -14,6 +14,7 @@ from app.db.queries.users import (
     create_user,
     get_guest_user_by_token,
     get_user_by_supabase_uid,
+    purge_user_activity_data,
     reactivate_deleted_user,
     soft_delete_user,
 )
@@ -170,8 +171,12 @@ async def create_account(
         # (Supabase won't issue a second identity for the same phone), so a
         # repeat sign-up resolves back to this same row. Recycle it into a
         # clean-slate account instead of blocking forever — the deletion
-        # already happened; there's nothing left to "continue".
+        # already happened; there's nothing left to "continue". The purge
+        # here is defensive, not redundant: delete_account() already purges
+        # at deletion time, but this also cleans up any account that was
+        # soft-deleted before that purge existed.
         await reactivate_deleted_user(conn, str(row["id"]), token.phone, token.email)
+        await purge_user_activity_data(conn, str(row["id"]))
         row = await get_user_by_supabase_uid(conn, token.supabase_uid)
 
     # Idempotent — already fully signed up (e.g. double-tap, retry)
@@ -254,20 +259,22 @@ async def delete_account(
     user_id: str,
     supabase_uid: str,
 ) -> None:
-    """Soft-delete the user row, anonymise PII, revoke Supabase sessions,
-    delete the Supabase Auth identity, purge uploaded recordings.
+    """Soft-delete the user row, purge their activity data, anonymise PII,
+    revoke Supabase sessions, delete the Supabase Auth identity, purge
+    uploaded recordings.
 
-    Order: DB soft-delete first (reversible by ops if a Supabase call fails),
-    then Supabase sign-out, then permanently deleting the Supabase Auth user
-    (frees the phone number for a future sign-up — without this, a repeat
-    sign-up resolves back to this same, now soft-deleted, identity), then
-    Storage purge of the user's pronunciation recordings (all three swallow
-    errors), then audit log.
+    Order: DB soft-delete + activity purge first (reversible by ops if a
+    Supabase call fails), then Supabase sign-out, then permanently deleting
+    the Supabase Auth user (frees the phone number for a future sign-up —
+    without this, a repeat sign-up resolves back to this same, now
+    soft-deleted, identity), then Storage purge of the user's pronunciation
+    recordings (all three Supabase calls swallow errors), then audit log.
     """
     from app.core import supabase_admin
     from app.services import audit_service
 
     await soft_delete_user(conn, user_id)
+    await purge_user_activity_data(conn, user_id)
     await supabase_admin.sign_out_user(supabase_uid)
     await supabase_admin.delete_user(supabase_uid)
     await supabase_admin.delete_user_recordings(user_id)

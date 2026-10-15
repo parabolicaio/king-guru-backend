@@ -22,9 +22,15 @@ _TIMEOUT = httpx.Timeout(10.0)
 
 
 def _headers() -> dict[str, str]:
+    # Supabase's Admin API (/auth/v1/admin/*) validates the role embedded in
+    # the apikey header itself before it ever looks at the Authorization
+    # bearer — sending the anon key here (anon's own role is "anon") gets
+    # every admin call rejected as bad_jwt even though Authorization
+    # correctly carries the service-role key. Both headers must carry the
+    # service-role key for an admin call to be accepted.
     return {
         "Authorization": f"Bearer {settings.supabase_service_role_key}",
-        "apikey": settings.supabase_anon_key,
+        "apikey": settings.supabase_service_role_key,
         "Content-Type": "application/json",
     }
 
