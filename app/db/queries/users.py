@@ -267,11 +267,74 @@ async def soft_delete_user(
             email       = $3,
             phone       = $3,
             avatar_url  = NULL,
+            apple_refresh_token = NULL,
             updated_at  = $2
         WHERE id = $1::uuid AND deleted_at IS NULL
         """,
         user_id, now, anon,
     )
+
+
+async def get_apple_refresh_token(
+    conn: asyncpg.Connection, user_id: str
+) -> str | None:
+    row = await conn.fetchrow(
+        'SELECT apple_refresh_token FROM "user" WHERE id = $1::uuid',
+        user_id,
+    )
+    return row["apple_refresh_token"] if row else None
+
+
+async def set_apple_refresh_token(
+    conn: asyncpg.Connection, user_id: str, refresh_token: str
+) -> None:
+    await conn.execute(
+        'UPDATE "user" SET apple_refresh_token = $2, updated_at = $3 WHERE id = $1::uuid',
+        user_id, refresh_token, datetime.now(timezone.utc),
+    )
+
+
+# Every table holding a user's own activity/progress data, keyed by user_id
+# (ai_tutor_message cascades automatically from ai_tutor_conversation).
+# Deliberately EXCLUDES:
+#   - payment: Privacy Policy promises payment records are kept for as long
+#     as Sri Lankan tax/accounting law requires — never purged on request.
+#   - audit_log: our own accountability trail of actions taken; its FK is
+#     ON DELETE RESTRICT by design and is never meant to be erasable.
+_USER_ACTIVITY_TABLES = (
+    "lesson_progress",
+    "lesson_section_progress",
+    "daily_goal_progress",
+    "notification",
+    "attempt",
+    "xp_ledger",
+    "daily_essay_submission",
+    "vocabulary_mastery",
+    "user_achievement",
+    "certificate",
+    "ai_tutor_conversation",
+    "ai_usage_log",
+    "saved_card",
+    "onepay_customer",
+)
+
+
+async def purge_user_activity_data(conn: asyncpg.Connection, user_id: str) -> None:
+    """Delete every row of a user's own activity/progress data.
+
+    Soft-deleting the "user" row alone (see soft_delete_user) only resets
+    columns on that one row — every other table still holds the deleted
+    user's lesson progress, daily goals, notifications, attempts, XP,
+    essays and AI-tutor history under the same user_id, because the row is
+    recycled (not hard-deleted) on a repeat sign-up with the same phone
+    number (see reactivate_deleted_user). Without this, that recycled
+    account silently "revives" all of it. Called both at deletion time and
+    defensively at reactivation time, so accounts soft-deleted before this
+    fix shipped get cleaned up the next time they're signed into again.
+    """
+    async with conn.transaction():
+        for table in _USER_ACTIVITY_TABLES:
+            await conn.execute(f'DELETE FROM "{table}" WHERE user_id = $1::uuid', user_id)
 
 
 async def reactivate_deleted_user(

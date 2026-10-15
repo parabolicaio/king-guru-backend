@@ -48,6 +48,28 @@ class Settings(BaseSettings):
     # --- Sentry (optional; disabled when empty) ---
     sentry_dsn: str = ""
 
+    # --- Sign in with Apple (server-side token exchange + revocation) ---
+    # Needed for exactly one thing: exchanging the authorization code the
+    # mobile app gets at sign-in for Apple's own refresh token, and revoking
+    # that token on account deletion (App Store Guideline 5.1.1(v) — an
+    # app offering Sign in with Apple must let deleting the account also
+    # disconnect it from the user's Apple ID). The native sign-in flow
+    # itself (Supabase signInWithIdToken) does not need any of this — only
+    # deletion's revoke step does. All three come from Apple Developer →
+    # Certificates, Identifiers & Profiles → Keys → a "Sign in with Apple"
+    # key: Team ID, that key's Key ID, and the .p8 file's contents. Every
+    # function here no-ops with a logged warning when these are empty, so
+    # account deletion keeps working before this is configured.
+    apple_signin_team_id: str = ""
+    apple_signin_key_id: str = ""
+    # The full contents of the downloaded .p8 file, including the
+    # -----BEGIN/END PRIVATE KEY----- lines. Secret — server-side only.
+    apple_signin_private_key: str = ""
+    # The app's Bundle ID — for a NATIVE app's authorization-code exchange
+    # (as opposed to a web Services ID), Apple requires this as both the
+    # client_id and the client_secret JWT's `sub` claim.
+    apple_signin_client_id: str = "ai.kingguru.app"
+
     # --- OnePay (payment gateway) ---
     # From your OnePay merchant dashboard — sandbox and live each have their
     # own App ID/Hash Salt pair. Hash Salt is a secret: server-side only,
