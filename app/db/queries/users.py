@@ -253,28 +253,6 @@ async def complete_onboarding(
     return row
 
 
-async def soft_delete_user(
-    conn: asyncpg.Connection, user_id: str
-) -> None:
-    """Soft-delete and PII-anonymise in a single statement."""
-    now = datetime.now(timezone.utc)
-    anon = f"[deleted-{user_id}]"
-    await conn.execute(
-        """
-        UPDATE "user"
-        SET deleted_at  = $2,
-            full_name   = $3,
-            email       = $3,
-            phone       = $3,
-            avatar_url  = NULL,
-            apple_refresh_token = NULL,
-            updated_at  = $2
-        WHERE id = $1::uuid AND deleted_at IS NULL
-        """,
-        user_id, now, anon,
-    )
-
-
 async def get_apple_refresh_token(
     conn: asyncpg.Connection, user_id: str
 ) -> str | None:
@@ -294,14 +272,11 @@ async def set_apple_refresh_token(
     )
 
 
-# Every table holding a user's own activity/progress data, keyed by user_id
-# (ai_tutor_message cascades automatically from ai_tutor_conversation).
-# Deliberately EXCLUDES:
-#   - payment: Privacy Policy promises payment records are kept for as long
-#     as Sri Lankan tax/accounting law requires — never purged on request.
-#   - audit_log: our own accountability trail of actions taken; its FK is
-#     ON DELETE RESTRICT by design and is never meant to be erasable.
-_USER_ACTIVITY_TABLES = (
+# Every table holding a user's own data, keyed by user_id (ai_tutor_message
+# cascades automatically from ai_tutor_conversation). Account deletion removes
+# ALL of it — payments and saved cards included — so nothing about the
+# account is retained.
+_USER_DATA_TABLES = (
     "lesson_progress",
     "lesson_section_progress",
     "daily_goal_progress",
@@ -316,25 +291,47 @@ _USER_ACTIVITY_TABLES = (
     "ai_usage_log",
     "saved_card",
     "onepay_customer",
+    "payment",
+    "subscription",
+    "user_feature_flag_override",
 )
 
 
-async def purge_user_activity_data(conn: asyncpg.Connection, user_id: str) -> None:
-    """Delete every row of a user's own activity/progress data.
+async def purge_user_data(conn: asyncpg.Connection, user_id: str) -> None:
+    """Delete every row that belongs to a user, except the "user" row itself.
 
-    Soft-deleting the "user" row alone (see soft_delete_user) only resets
-    columns on that one row — every other table still holds the deleted
-    user's lesson progress, daily goals, notifications, attempts, XP,
-    essays and AI-tutor history under the same user_id, because the row is
-    recycled (not hard-deleted) on a repeat sign-up with the same phone
-    number (see reactivate_deleted_user). Without this, that recycled
-    account silently "revives" all of it. Called both at deletion time and
-    defensively at reactivation time, so accounts soft-deleted before this
-    fix shipped get cleaned up the next time they're signed into again.
+    Covers the per-user tables above plus the rows that reference the user
+    through a non-``user_id`` column: audit entries the user performed or that
+    are about them, flag overrides they set, content they submitted; and
+    detaches them as reviewer on other people's content. All of these foreign
+    keys are ON DELETE RESTRICT, so they must go before the user row can.
+
+    Also used to clean up legacy soft-deleted rows when one is reactivated by
+    a repeat sign-up (see reactivate_deleted_user).
     """
     async with conn.transaction():
-        for table in _USER_ACTIVITY_TABLES:
+        for table in _USER_DATA_TABLES:
             await conn.execute(f'DELETE FROM "{table}" WHERE user_id = $1::uuid', user_id)
+        await conn.execute(
+            "DELETE FROM user_feature_flag_override WHERE set_by = $1::uuid", user_id
+        )
+        await conn.execute(
+            "DELETE FROM audit_log WHERE actor_id = $1::uuid "
+            "OR (target_type = 'user' AND target_id = $1::uuid)",
+            user_id,
+        )
+        await conn.execute(
+            "DELETE FROM content_review WHERE submitted_by = $1::uuid", user_id
+        )
+        await conn.execute(
+            "UPDATE content_review SET reviewer_id = NULL WHERE reviewer_id = $1::uuid",
+            user_id,
+        )
+
+
+async def delete_user_row(conn: asyncpg.Connection, user_id: str) -> None:
+    """Hard-delete the "user" row. Call purge_user_data first."""
+    await conn.execute('DELETE FROM "user" WHERE id = $1::uuid', user_id)
 
 
 async def reactivate_deleted_user(

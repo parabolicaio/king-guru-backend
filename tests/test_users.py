@@ -104,19 +104,27 @@ async def test_delete_me(async_client: AsyncClient, mock_conn: AsyncMock):
 
 
 @pytest.mark.asyncio
-async def test_delete_me_pii_anonymised(async_client: AsyncClient, mock_conn: AsyncMock):
-    """Verify the UPDATE statement includes anonymised PII placeholders."""
+async def test_delete_me_removes_everything(async_client: AsyncClient, mock_conn: AsyncMock):
+    """Deletion is a hard delete: every table (payments and audit rows
+    included) is purged, then the user row itself is removed."""
     row = _user_row(user_id="22222222-2222-2222-2222-222222222222")
     mock_conn.fetchrow.return_value = row
     with (
         patch("app.core.supabase_admin.sign_out_user", new_callable=AsyncMock),
+        patch("app.core.supabase_admin.delete_user", new_callable=AsyncMock),
         patch("app.core.supabase_admin.delete_user_recordings", new_callable=AsyncMock),
-        patch("app.services.audit_service.log", new_callable=AsyncMock),
+        patch("app.services.audit_service.log", new_callable=AsyncMock) as audit,
     ):
         resp = await async_client.delete("/api/v1/users/me", headers=_auth_header())
     assert resp.status_code == 204
-    sql_call = mock_conn.execute.call_args_list[0]
-    assert "[deleted-" in str(sql_call)
+    statements = [str(c.args[0]) for c in mock_conn.execute.call_args_list]
+    for table in ("payment", "saved_card", "lesson_progress", "xp_ledger", "audit_log"):
+        assert any(f"DELETE FROM \"{table}\"" in s or f"DELETE FROM {table}" in s for s in statements), table
+    # The user row goes last, and is deleted — not just anonymised.
+    assert statements[-1].startswith('DELETE FROM "user"')
+    assert not any("[deleted-" in str(c) for c in mock_conn.execute.call_args_list)
+    # No audit entry may be left behind about the deleted account.
+    audit.assert_not_awaited()
 
 
 # ── POST /users/me/onboarding ────────────────────────────────────────────────

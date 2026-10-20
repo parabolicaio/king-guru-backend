@@ -161,12 +161,4 @@ async def delete_user_endpoint(
         supabase_uid=str(target["supabase_uid"]),
     )
 
-    await audit_service.log(
-        db,
-        action="user.deleted",
-        actor_id=str(admin["id"]),
-        target_type="user",
-        target_id=str(user_id),
-    )
-
     return Response(status_code=204)
