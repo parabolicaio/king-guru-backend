@@ -92,7 +92,9 @@ async def test_patch_me(async_client: AsyncClient, mock_conn: AsyncMock):
 async def test_delete_me(async_client: AsyncClient, mock_conn: AsyncMock):
     mock_conn.fetchrow.return_value = _user_row()
     with (
+        patch("app.services.user_service.get_apple_refresh_token", new_callable=AsyncMock, return_value=None),
         patch("app.core.supabase_admin.sign_out_user", new_callable=AsyncMock),
+        patch("app.core.supabase_admin.delete_user", new_callable=AsyncMock),
         patch("app.core.supabase_admin.delete_user_recordings", new_callable=AsyncMock) as purge,
         patch("app.services.audit_service.log", new_callable=AsyncMock),
     ):
@@ -110,6 +112,7 @@ async def test_delete_me_removes_everything(async_client: AsyncClient, mock_conn
     row = _user_row(user_id="22222222-2222-2222-2222-222222222222")
     mock_conn.fetchrow.return_value = row
     with (
+        patch("app.services.user_service.get_apple_refresh_token", new_callable=AsyncMock, return_value=None),
         patch("app.core.supabase_admin.sign_out_user", new_callable=AsyncMock),
         patch("app.core.supabase_admin.delete_user", new_callable=AsyncMock),
         patch("app.core.supabase_admin.delete_user_recordings", new_callable=AsyncMock),
