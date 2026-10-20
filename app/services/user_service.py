@@ -12,10 +12,13 @@ from app.db.queries.users import (
     complete_onboarding,
     create_guest_user,
     create_user,
+    delete_user_row,
+    get_apple_refresh_token,
     get_guest_user_by_token,
     get_user_by_supabase_uid,
+    purge_user_data,
     reactivate_deleted_user,
-    soft_delete_user,
+    set_apple_refresh_token,
 )
 from app.schemas.users import SignupRequest, UserProfile
 
@@ -170,8 +173,11 @@ async def create_account(
         # (Supabase won't issue a second identity for the same phone), so a
         # repeat sign-up resolves back to this same row. Recycle it into a
         # clean-slate account instead of blocking forever — the deletion
-        # already happened; there's nothing left to "continue".
+        # already happened; there's nothing left to "continue". Only rows
+        # soft-deleted before delete_account() became a hard delete can land
+        # here; the purge below removes whatever they still hold.
         await reactivate_deleted_user(conn, str(row["id"]), token.phone, token.email)
+        await purge_user_data(conn, str(row["id"]))
         row = await get_user_by_supabase_uid(conn, token.supabase_uid)
 
     # Idempotent — already fully signed up (e.g. double-tap, retry)
@@ -254,27 +260,52 @@ async def delete_account(
     user_id: str,
     supabase_uid: str,
 ) -> None:
-    """Soft-delete the user row, anonymise PII, revoke Supabase sessions,
-    delete the Supabase Auth identity, purge uploaded recordings.
+    """Permanently delete the account and everything tied to it.
 
-    Order: DB soft-delete first (reversible by ops if a Supabase call fails),
-    then Supabase sign-out, then permanently deleting the Supabase Auth user
-    (frees the phone number for a future sign-up — without this, a repeat
-    sign-up resolves back to this same, now soft-deleted, identity), then
-    Storage purge of the user's pronunciation recordings (all three swallow
-    errors), then audit log.
+    Order: fetch the Apple refresh_token first (it lives on the user row that
+    is about to be removed). Then remove every database row — progress,
+    payments, saved cards, audit entries, the user row itself — in one
+    transaction, so a failure leaves the account fully intact rather than
+    half-deleted. Then the external cleanup, which swallows errors: revoke
+    any linked Apple Sign-In grant (App Store Guideline 5.1.1(v); a no-op if
+    this user never linked Apple), revoke Supabase sessions, delete the
+    Supabase Auth identity (frees the phone number for a future sign-up) and
+    purge uploaded pronunciation recordings.
+
+    No audit entry is written: keeping a record of the account would defeat
+    the deletion.
     """
-    from app.core import supabase_admin
-    from app.services import audit_service
+    from app.core import apple_signin_client, supabase_admin
 
-    await soft_delete_user(conn, user_id)
+    apple_refresh_token = await get_apple_refresh_token(conn, user_id)
+
+    async with conn.transaction():
+        await purge_user_data(conn, user_id)
+        await delete_user_row(conn, user_id)
+
+    if apple_refresh_token:
+        await apple_signin_client.revoke_token(apple_refresh_token)
     await supabase_admin.sign_out_user(supabase_uid)
     await supabase_admin.delete_user(supabase_uid)
     await supabase_admin.delete_user_recordings(user_id)
-    await audit_service.log(
-        conn,
-        action=audit_service.USER_DELETED,
-        actor_id=user_id,
-        target_type="user",
-        target_id=user_id,
-    )
+
+
+async def link_apple_account(
+    conn: asyncpg.Connection,
+    user_id: str,
+    authorization_code: str,
+) -> None:
+    """Exchange a Sign in with Apple authorization code for a refresh_token
+    and store it, so delete_account() can later revoke it (Guideline 5.1.1(v)).
+
+    Called right after a successful native Apple sign-in. Best-effort: the
+    sign-in itself already succeeded via Supabase's own identityToken
+    verification, so a failure here (Apple Sign-In not yet configured, a
+    network error, an already-used code) must never fail the caller's
+    sign-in flow — it only means deletion later won't have a token to revoke.
+    """
+    from app.core import apple_signin_client
+
+    tokens = await apple_signin_client.exchange_code_for_tokens(authorization_code)
+    if tokens and tokens.get("refresh_token"):
+        await set_apple_refresh_token(conn, user_id, tokens["refresh_token"])
