@@ -18,3 +18,5 @@ venv/
 kingguru/
 kingguru
 .env.local
+env/
+env
