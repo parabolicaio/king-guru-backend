@@ -461,6 +461,9 @@ async def submit_attempt(
         lesson_result=lesson_result,
         streak=streak_result,
         pronunciation_detail=pronunciation_detail,
+        correct_answer=scoring_service.correct_answer_for(
+            q_row["type"], dict(q_row["payload"])
+        ),
         newly_unlocked_achievements=[
             UnlockedAchievement(
                 id=ach["id"],

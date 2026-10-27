@@ -39,6 +39,29 @@ def _normalise_text(s: str) -> str:
     return s
 
 
+def correct_answer_for(question_type: str, payload: dict) -> str | None:
+    """The answer to show the learner after they answer (D-39).
+
+    Option questions return the option id, True/False returns "true" or
+    "false", typed questions return the first accepted answer. Other types
+    return None.
+    """
+    match question_type:
+        case "mcq_single" | "mcq_long_short_form" | "fill_blank_options":
+            value = payload.get("correct_option_id")
+            return str(value) if value is not None else None
+        case "true_false":
+            value = payload.get("correct_answer")
+            return str(value).lower() if isinstance(value, bool) else None
+        case "fill_blank_typed":
+            accepted = payload.get("accepted_answers") or []
+            return str(accepted[0]) if accepted else None
+        case "correct_mistake":
+            accepted = payload.get("accepted_corrections") or []
+            return str(accepted[0]) if accepted else None
+    return None
+
+
 def score(question_type: str, payload: dict, response: dict) -> ScoringResult:
     """Score a single attempt.
 
