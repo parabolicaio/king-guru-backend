@@ -19,8 +19,30 @@ async def check_and_unlock(
 ) -> list[asyncpg.Record]:
     """Check all active achievements for the user and unlock any newly met conditions.
 
+    An achievement's own XP reward can meet an XP condition (e.g. 'Century'),
+    so this repeats with the fresh XP total until nothing new unlocks (D-32).
+
     Returns list of newly unlocked achievement rows.
     """
+    newly_unlocked: list[asyncpg.Record] = []
+    for _ in range(5):
+        batch = await _check_once(db, user)
+        if not batch:
+            break
+        newly_unlocked.extend(batch)
+        if not any(a["xp_reward"] > 0 for a in batch):
+            break
+        fresh = await db.fetchrow('SELECT * FROM "user" WHERE id = $1::uuid', str(user["id"]))
+        if fresh is None:
+            break
+        user = fresh
+    return newly_unlocked
+
+
+async def _check_once(
+    db: asyncpg.Connection,
+    user: asyncpg.Record,
+) -> list[asyncpg.Record]:
     achievements = await get_all_achievements_with_user_state(db, str(user["id"]))
     stats = await _compute_stats(db, user)
     newly_unlocked = []
@@ -79,7 +101,8 @@ async def _compute_stats(db: asyncpg.Connection, user: asyncpg.Record) -> dict[s
         uid,
     )
     essay_count = await db.fetchval(
-        "SELECT count(*) FROM daily_essay_submission WHERE user_id = $1::uuid",
+        # Drafts are not essays yet (D-32).
+        "SELECT count(*) FROM daily_essay_submission WHERE user_id = $1::uuid AND is_draft = FALSE",
         uid,
     )
     return {

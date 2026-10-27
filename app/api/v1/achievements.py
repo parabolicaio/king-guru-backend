@@ -1,5 +1,7 @@
 """Achievements endpoints."""
 
+import logging
+
 import asyncpg
 from fastapi import APIRouter, Depends
 
@@ -8,6 +10,9 @@ from app.core.security import get_current_user
 from app.db.pool import get_db
 from app.db.queries.achievements import get_all_achievements_with_user_state
 from app.schemas.achievements import AchievementItem, AchievementsResponse
+from app.services import achievement_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/achievements", tags=["achievements"])
 
@@ -17,6 +22,15 @@ async def list_achievements(
     user: asyncpg.Record = Depends(get_current_user),
     db: asyncpg.Connection = Depends(get_db),
 ) -> AchievementsResponse:
+    # XP also comes from places that don't run the unlock check (placement,
+    # streaks, vocabulary, guest merge), so check again before listing; this
+    # keeps Rewards and Profile current, e.g. 'Century' at 100 XP (D-32).
+    try:
+        async with db.transaction():
+            await achievement_service.check_and_unlock(db, user)
+    except Exception:
+        logger.exception("achievement re-check failed for user=%s", user["id"])
+
     rows = await get_all_achievements_with_user_state(db, str(user["id"]))
     unlocked = sum(1 for r in rows if r["unlocked_at"] is not None)
 
