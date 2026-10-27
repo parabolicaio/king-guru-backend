@@ -34,22 +34,48 @@ class PlacementScore:
     skill_breakdown: list[PlacementSkillBreakdown] = field(default_factory=list)
 
 
+def _option_text(option: dict) -> str | None:
+    for key in ("text", "label", "value"):
+        value = option.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 def _extract_correct_answer(q_type: str, payload: dict) -> dict:
-    """Return the answer-key portion of a question payload for display on the results screen."""
-    if q_type in ("mcq_single", "mcq_long_short_form"):
+    """Return the answer-key portion of a question payload for display on the results screen.
+
+    Every shape includes `correct_text`, a readable answer for the review
+    list (D-21: True/False and some multiple-choice rows showed "—").
+    """
+    if q_type in ("mcq_single", "mcq_long_short_form", "fill_blank_options"):
         correct_id = payload.get("correct_option_id")
-        options = {o["id"]: o.get("text", "") for o in payload.get("options", [])}
-        return {"correct_option_id": correct_id, "correct_text": options.get(correct_id)}
+        options = {o.get("id"): _option_text(o) for o in payload.get("options", []) if isinstance(o, dict)}
+        text = options.get(correct_id)
+        if text is None and q_type == "fill_blank_options":
+            accepted = payload.get("accepted_answers") or []
+            text = str(accepted[0]) if accepted else None
+        return {"correct_option_id": correct_id, "correct_text": text}
     if q_type == "true_false":
-        return {"correct_answer": payload.get("correct_answer")}
-    if q_type in ("fill_blank_typed", "fill_blank_options"):
-        return {"accepted_answers": payload.get("accepted_answers", [])}
+        value = payload.get("correct_answer")
+        text = ("True" if value else "False") if isinstance(value, bool) else None
+        return {"correct_answer": value, "correct_text": text}
+    if q_type == "fill_blank_typed":
+        accepted = payload.get("accepted_answers", [])
+        return {"accepted_answers": accepted, "correct_text": str(accepted[0]) if accepted else None}
     if q_type == "match_pairs":
-        return {"pairs": payload.get("pairs", [])}
+        pairs = payload.get("pairs", [])
+        text = ", ".join(
+            f"{p.get('left')} = {p.get('right')}" for p in pairs if isinstance(p, dict)
+        ) or None
+        return {"pairs": pairs, "correct_text": text}
     if q_type in ("order_events", "sentence_builder"):
-        return {"correct_order": payload.get("items", payload.get("words", []))}
+        order = payload.get("correct_order") or payload.get("items") or payload.get("words") or []
+        joiner = " " if q_type == "sentence_builder" else " → "
+        return {"correct_order": order, "correct_text": joiner.join(str(x) for x in order) or None}
     if q_type == "correct_mistake":
-        return {"accepted_corrections": payload.get("accepted_corrections", [])}
+        accepted = payload.get("accepted_corrections", [])
+        return {"accepted_corrections": accepted, "correct_text": str(accepted[0]) if accepted else None}
     return payload
 
 
