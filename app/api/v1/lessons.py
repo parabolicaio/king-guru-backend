@@ -18,18 +18,18 @@ from app.core.errors import (
 from app.core.security import get_current_user, get_optional_user
 from app.db.pool import get_db
 from app.db.queries.lessons import (
-    get_content_blocks_for_section,
+    get_content_blocks_for_lesson,
     get_latest_attempts_for_lesson,
     get_lesson_for_learner,
     get_lesson_progress_for_user,
     get_lessons_for_level,
     get_level_with_lessons,
-    get_questions_for_section,
+    get_questions_for_lesson,
     get_section_category_image_map,
     get_section_progress_for_lesson,
     get_sections_for_lesson,
     get_vocabulary_mastery_for_lesson,
-    get_vocabulary_words_for_section,
+    get_vocabulary_words_for_lesson,
     upsert_section_progress,
 )
 from app.db.queries.users import get_guest_user_by_token
@@ -181,13 +181,18 @@ async def get_lesson(
         progress_rows = await get_section_progress_for_lesson(db, lesson_id, guest_token=guest_token)
         section_progress_map = {str(p["lesson_section_id"]): p for p in progress_rows}
 
+    # Three queries for the whole lesson instead of three per section (D-19).
+    blocks_by_section = await get_content_blocks_for_lesson(db, lesson_id)
+    questions_by_section = await get_questions_for_lesson(db, lesson_id)
+    vocab_by_section = await get_vocabulary_words_for_lesson(db, lesson_id)
+
     sections = []
     for sec in sections_rows:
         sec_id = str(sec["id"])
 
-        blocks_rows = await get_content_blocks_for_section(db, sec_id)
-        questions_rows = await get_questions_for_section(db, sec_id)
-        vocab_rows = await get_vocabulary_words_for_section(db, sec_id)
+        blocks_rows = blocks_by_section.get(sec_id, [])
+        questions_rows = questions_by_section.get(sec_id, [])
+        vocab_rows = vocab_by_section.get(sec_id, [])
 
         blocks = [
             ContentBlock(
