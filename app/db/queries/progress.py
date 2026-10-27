@@ -20,7 +20,8 @@ async def get_skill_progress(
 
     Uses latest attempt per question (not best) for accuracy calculation.
     All 7 categories are always returned; is_available=false when the level
-    has no sections of that type.
+    has no sections of that type. A section with no questions (Speaking)
+    still counts as available, with total_questions 0.
     """
     return await db.fetch(
         """
@@ -30,8 +31,10 @@ async def get_skill_progress(
                    COUNT(DISTINCT q.id) AS total_questions
             FROM   lesson_section ls
             JOIN   lesson l  ON l.id  = ls.lesson_id
-            JOIN   question q ON q.lesson_section_id = ls.id
-                             AND q.purpose = 'assessment'
+            -- LEFT JOIN: a section with nothing to answer (Speaking) still
+            -- makes its skill available (D-75).
+            LEFT JOIN question q ON q.lesson_section_id = ls.id
+                                AND q.purpose = 'assessment'
             WHERE  l.level_id   = $2
               AND  l.status     = 'approved'
               AND  l.deleted_at IS NULL
@@ -63,8 +66,7 @@ async def get_skill_progress(
         )
         SELECT cat.category,
                COALESCE(ls.total_questions, 0)                       AS total_questions,
-               (ls.total_questions IS NOT NULL
-                AND ls.total_questions > 0)                          AS is_available,
+               (ls.category IS NOT NULL)                             AS is_available,
                COALESCE(us.questions_answered, 0)::int               AS questions_answered,
                us.accuracy
         FROM   (VALUES
