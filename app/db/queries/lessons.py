@@ -159,54 +159,75 @@ async def get_sections_for_lesson(
     )
 
 
-async def get_content_blocks_for_section(
+def _group_by_section(rows: list[asyncpg.Record]) -> dict[str, list[asyncpg.Record]]:
+    grouped: dict[str, list[asyncpg.Record]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["lesson_section_id"]), []).append(row)
+    return grouped
+
+
+async def get_content_blocks_for_lesson(
     db: asyncpg.Connection,
-    section_id: str,
-) -> list[asyncpg.Record]:
-    return await db.fetch(
+    lesson_id: str,
+) -> dict[str, list[asyncpg.Record]]:
+    """Content blocks for every section of a lesson in one query, keyed by
+    section id (D-19: one query per section made lessons take ~15 s)."""
+    rows = await db.fetch(
         """
-        SELECT id, block_type, display_order, payload, translations
-        FROM content_block
-        WHERE lesson_section_id = $1
-        ORDER BY display_order ASC
+        SELECT cb.lesson_section_id, cb.id, cb.block_type, cb.display_order,
+               cb.payload, cb.translations
+        FROM content_block cb
+        JOIN lesson_section ls ON ls.id = cb.lesson_section_id
+        WHERE ls.lesson_id = $1
+        ORDER BY cb.lesson_section_id, cb.display_order ASC
         """,
-        section_id,
+        lesson_id,
     )
+    return _group_by_section(rows)
 
 
-async def get_questions_for_section(
+async def get_questions_for_lesson(
     db: asyncpg.Connection,
-    section_id: str,
-) -> list[asyncpg.Record]:
-    return await db.fetch(
+    lesson_id: str,
+) -> dict[str, list[asyncpg.Record]]:
+    """Questions for every section of a lesson in one query, keyed by section id."""
+    rows = await db.fetch(
         """
-        SELECT id, type, purpose, display_order,
-               prompt_text, prompt_audio_url, prompt_image_url,
-               payload, xp_value, hint_text,
-               vocabulary_word_id, translations
-        FROM question
-        WHERE lesson_section_id = $1
-        ORDER BY display_order ASC
+        SELECT q.lesson_section_id, q.id, q.type, q.purpose, q.display_order,
+               q.prompt_text, q.prompt_audio_url, q.prompt_image_url,
+               q.payload, q.xp_value, q.hint_text,
+               q.vocabulary_word_id, q.translations
+        FROM question q
+        JOIN lesson_section ls ON ls.id = q.lesson_section_id
+        WHERE ls.lesson_id = $1
+        ORDER BY q.lesson_section_id, q.display_order ASC
         """,
-        section_id,
+        lesson_id,
     )
+    return _group_by_section(rows)
 
 
-async def get_vocabulary_words_for_section(
+async def get_vocabulary_words_for_lesson(
     db: asyncpg.Connection,
-    section_id: str,
-) -> list[asyncpg.Record]:
-    return await db.fetch(
+    lesson_id: str,
+) -> dict[str, list[asyncpg.Record]]:
+    """Vocabulary words for every section of a lesson in one query, keyed by section id."""
+    rows = await db.fetch(
         """
-        SELECT id, word, definition, example_sentence,
-               pronunciation_guide_si, difficulty,
-               image_url, audio_url, translations
-        FROM vocabulary_word
-        WHERE lesson_section_id = $1
-        ORDER BY id ASC
+        SELECT vw.lesson_section_id, vw.id, vw.word, vw.definition,
+               vw.example_sentence, vw.pronunciation_guide_si, vw.difficulty,
+               vw.image_url, vw.audio_url, vw.translations
+        FROM vocabulary_word vw
+        JOIN lesson_section ls ON ls.id = vw.lesson_section_id
+        WHERE ls.lesson_id = $1
+        ORDER BY vw.lesson_section_id, vw.id ASC
         """,
-        section_id,
+        lesson_id,
     )
+    return _group_by_section(rows)
+
+
+
 
 
 async def get_latest_attempts_for_lesson(
