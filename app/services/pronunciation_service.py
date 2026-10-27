@@ -10,7 +10,10 @@ typical of Lankan English. Focus is on intelligibility and accuracy.
 """
 
 import base64
+import io
 import logging
+import math
+import wave
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -30,6 +33,17 @@ _AXIS_MAX = {"accuracy": 10, "clarity": 6, "fluency": 4}
 _TOTAL_MARKS = 20
 
 _LANGUAGE_NAMES = {"en": "English", "si": "Sinhala"}
+
+# Silence check (D-07): silent clips were graded A+. A take needs at least
+# 300 ms of 20 ms windows louder than about -36 dBFS, and must be 0.5 s long.
+_MIN_DURATION_S = 0.5
+_WINDOW_RMS_THRESHOLD = 0.015
+_MIN_SPEECH_MS = 300
+
+_NO_SPEECH_SUMMARY = {
+    "en": "We couldn't hear any speech in this recording. Please record again and read the words aloud.",
+    "si": "මෙම පටිගත කිරීමේ කතාවක් ඇසුනේ නැත. කරුණාකර නැවත පටිගත කර වචන හඬ නගා කියවන්න.",
+}
 
 _SYSTEM_PROMPT = """\
 You are an English pronunciation assessor. You will hear a learner reading a target text aloud \
@@ -61,6 +75,7 @@ Provide ALL text (summary and feedback items) in the requested feedback language
 
 Respond ONLY with valid JSON matching this exact schema:
 {
+  "transcript": "<exactly what you heard, word for word; empty string if no words were spoken>",
   "accuracy": <integer 0-10>,
   "clarity": <integer 0-6>,
   "fluency": <integer 0-4>,
@@ -100,6 +115,57 @@ def _score_to_grade(score: float) -> str:
     return "F"
 
 
+def audio_has_speech(audio_bytes: bytes, audio_mime_type: str) -> bool:
+    """Rough check that a recording contains speech.
+
+    Only 16-bit PCM WAV is measured; other formats return True and are left
+    to the model (which must also return an empty transcript for silence).
+    """
+    if "wav" not in (audio_mime_type or "").lower():
+        return True
+    try:
+        with wave.open(io.BytesIO(audio_bytes), "rb") as w:
+            if w.getsampwidth() != 2:
+                return True
+            rate = w.getframerate() or 16000
+            channels = w.getnchannels() or 1
+            frames = w.readframes(w.getnframes())
+    except (wave.Error, EOFError):
+        return True
+
+    import array
+
+    samples = array.array("h")
+    samples.frombytes(frames[: len(frames) - (len(frames) % 2)])
+    if channels > 1:
+        samples = samples[::channels]
+    if len(samples) / rate < _MIN_DURATION_S:
+        return False
+
+    window = max(1, rate // 50)  # 20 ms
+    voiced = 0
+    for start in range(0, len(samples), window):
+        chunk = samples[start : start + window]
+        rms = math.sqrt(sum((v / 32768.0) ** 2 for v in chunk) / len(chunk))
+        if rms >= _WINDOW_RMS_THRESHOLD:
+            voiced += 1
+    return voiced * 20 >= _MIN_SPEECH_MS
+
+
+def _no_speech_result(feedback_language: str) -> PronunciationResult:
+    summary = _NO_SPEECH_SUMMARY.get(feedback_language, _NO_SPEECH_SUMMARY["en"])
+    return PronunciationResult(
+        accuracy=0.0,
+        clarity=0.0,
+        fluency=0.0,
+        overall_score=0.0,
+        grade="F",
+        summary=summary,
+        feedback={"accuracy": [summary], "clarity": [], "fluency": []},
+        ai_model="no-speech-check",
+    )
+
+
 def _default_failed_result() -> PronunciationResult:
     return PronunciationResult(
         accuracy=0.0,
@@ -124,6 +190,10 @@ async def grade(
     Never raises — falls back to a zero score on any Gemini or parse error.
     """
     from app.core.config import settings
+
+    if not audio_has_speech(audio_bytes, audio_mime_type):
+        logger.info("pronunciation no speech detected bytes=%d", len(audio_bytes))
+        return _no_speech_result(feedback_language)
 
     if not getattr(settings, "gemini_api_key", None):
         logger.warning("pronunciation gemini_api_key missing — using fallback grade")
@@ -193,7 +263,10 @@ async def _call_gemini(
                         {"text": user_msg},
                     ]
                 }],
-                "generationConfig": {"responseMimeType": "application/json"},
+                "generationConfig": {
+                    "responseMimeType": "application/json",
+                    "temperature": 0,
+                },
             },
         )
         if resp.is_error:
@@ -224,6 +297,13 @@ async def _call_gemini(
     missing = [k for k in required if k not in scores]
     if missing:
         raise ValueError(f"Gemini response missing fields: {missing}")
+
+    # The model must say what it heard. No words means no marks (D-07).
+    # (Only when the field is present, so a model that skips it isn't failed.)
+    transcript = str(scores.get("transcript") or "").strip()
+    if "transcript" in scores and not any(ch.isalpha() for ch in transcript):
+        logger.info("pronunciation empty transcript, forcing no-speech result")
+        return _no_speech_result(feedback_language)
 
     accuracy = min(float(scores["accuracy"]), _AXIS_MAX["accuracy"])
     clarity  = min(float(scores["clarity"]),  _AXIS_MAX["clarity"])

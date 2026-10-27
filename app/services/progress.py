@@ -34,10 +34,26 @@ async def record_attempt(
     Returns ProgressResult with completion state and any lesson-complete XP.
     Must be called within the attempt transaction.
     """
-    from app.services import xp as xp_service
 
     if purpose != "assessment":
         return ProgressResult(lesson_complete=False, next_lesson_id=None, xp_from_lesson=0)
+    return await check_lesson_completion(db, user_id, lesson_id)
+
+
+async def check_lesson_completion(
+    db: asyncpg.Connection,
+    user_id: str,
+    lesson_id: str,
+) -> ProgressResult:
+    """Mark the lesson started, and complete it (XP, notifications, unlock
+    the next lesson) once every assessment question has an attempt.
+
+    Called after an assessment attempt and also when a learner finishes a
+    section with nothing to answer, such as Speaking (D-58), so the lesson
+    completes as soon as its last section is done. Safe to call repeatedly.
+    Must be called within a transaction.
+    """
+    from app.services import xp as xp_service
 
     # Upsert lesson_progress — creates the row on first attempt (e.g. Lesson 1
     # which has no row yet) and advances not_started → in_progress on conflict.

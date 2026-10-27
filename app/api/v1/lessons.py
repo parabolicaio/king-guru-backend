@@ -18,18 +18,18 @@ from app.core.errors import (
 from app.core.security import get_current_user, get_optional_user
 from app.db.pool import get_db
 from app.db.queries.lessons import (
-    get_content_blocks_for_section,
+    get_content_blocks_for_lesson,
     get_latest_attempts_for_lesson,
     get_lesson_for_learner,
     get_lesson_progress_for_user,
     get_lessons_for_level,
     get_level_with_lessons,
-    get_questions_for_section,
+    get_questions_for_lesson,
     get_section_category_image_map,
     get_section_progress_for_lesson,
     get_sections_for_lesson,
     get_vocabulary_mastery_for_lesson,
-    get_vocabulary_words_for_section,
+    get_vocabulary_words_for_lesson,
     upsert_section_progress,
 )
 from app.db.queries.users import get_guest_user_by_token
@@ -49,6 +49,7 @@ from app.schemas.lessons import (
     VocabularyMastery,
     VocabularyWordInLesson,
 )
+from app.services import progress as progress_service
 from app.services.lesson_chain import get_lessons_with_progress
 
 router = APIRouter(tags=["lessons"])
@@ -180,13 +181,18 @@ async def get_lesson(
         progress_rows = await get_section_progress_for_lesson(db, lesson_id, guest_token=guest_token)
         section_progress_map = {str(p["lesson_section_id"]): p for p in progress_rows}
 
+    # Three queries for the whole lesson instead of three per section (D-19).
+    blocks_by_section = await get_content_blocks_for_lesson(db, lesson_id)
+    questions_by_section = await get_questions_for_lesson(db, lesson_id)
+    vocab_by_section = await get_vocabulary_words_for_lesson(db, lesson_id)
+
     sections = []
     for sec in sections_rows:
         sec_id = str(sec["id"])
 
-        blocks_rows = await get_content_blocks_for_section(db, sec_id)
-        questions_rows = await get_questions_for_section(db, sec_id)
-        vocab_rows = await get_vocabulary_words_for_section(db, sec_id)
+        blocks_rows = blocks_by_section.get(sec_id, [])
+        questions_rows = questions_by_section.get(sec_id, [])
+        vocab_rows = vocab_by_section.get(sec_id, [])
 
         blocks = [
             ContentBlock(
@@ -312,24 +318,42 @@ async def report_section_progress(
     if user is None and not x_guest_token:
         raise AppError(*UNAUTHORIZED)
 
-    section_exists = await db.fetchval(
-        "SELECT 1 FROM lesson_section WHERE id = $1", section_id
+    lesson_id = await db.fetchval(
+        "SELECT lesson_id FROM lesson_section WHERE id = $1", section_id
     )
-    if not section_exists:
+    if not lesson_id:
         raise AppError(*SECTION_NOT_FOUND)
 
     user_id = str(user["id"]) if user else None
     guest_token = x_guest_token if user is None else None
 
-    row = await upsert_section_progress(
-        db,
-        lesson_section_id=section_id,
-        step_index=max(0, body.step_index),
-        total_steps=max(0, body.total_steps),
-        user_id=user_id,
-        guest_token=guest_token,
-    )
+    async with db.transaction():
+        row = await upsert_section_progress(
+            db,
+            lesson_section_id=section_id,
+            step_index=max(0, body.step_index),
+            total_steps=max(0, body.total_steps),
+            user_id=user_id,
+            guest_token=guest_token,
+        )
+
+        # Finishing a section with nothing to answer (Speaking) must be able
+        # to complete the lesson and unlock the next one (D-58).
+        completion = None
+        section_done = 0 < row["total_steps"] <= row["furthest_step_index"]
+        if section_done:
+            tracking_user_id = user_id
+            if tracking_user_id is None:
+                from app.services import guest_service
+                guest_row = await guest_service.ensure_guest_user(db, guest_token)
+                tracking_user_id = str(guest_row["id"])
+            completion = await progress_service.check_lesson_completion(
+                db, tracking_user_id, str(lesson_id)
+            )
+
     return SectionProgressResponse(
         furthest_step_index=row["furthest_step_index"],
         total_steps=row["total_steps"],
+        lesson_complete=bool(completion and completion.lesson_complete),
+        next_lesson_id=completion.next_lesson_id if completion else None,
     )

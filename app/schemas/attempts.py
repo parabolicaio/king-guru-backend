@@ -56,6 +56,8 @@ class AttemptResponse(BaseModel):
     pronunciation_detail: PronunciationDetail | None = None
     # Default keeps the contract additive for old clients (sideloaded APKs).
     newly_unlocked_achievements: list[UnlockedAchievement] = []
+    # So the app can highlight the right option after a wrong answer (D-39).
+    correct_answer: str | None = None
 
 
 class XPLedgerEntry(BaseModel):

@@ -81,6 +81,9 @@ class SectionProgressRequest(BaseModel):
 class SectionProgressResponse(BaseModel):
     furthest_step_index: int
     total_steps: int
+    # Set when finishing this section completed the lesson (D-58).
+    lesson_complete: bool = False
+    next_lesson_id: UUID | None = None
 
 
 class LessonDetail(BaseModel):

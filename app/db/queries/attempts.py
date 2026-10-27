@@ -92,8 +92,15 @@ async def get_answered_assessment_question_ids(
         JOIN question q      ON q.id  = a.question_id
         JOIN lesson_section ls ON ls.id = q.lesson_section_id
         WHERE ls.lesson_id = $1
-          AND a.user_id    = $2::uuid
           AND q.purpose    = 'assessment'
+          AND (
+                a.user_id = $2::uuid
+                -- Guest attempts are stored by guest_token, not user_id (D-58).
+                OR a.guest_token = (
+                    SELECT u.guest_token FROM "user" u
+                    WHERE u.id = $2::uuid AND u.is_guest
+                )
+              )
         """,
         lesson_id,
         user_id,
