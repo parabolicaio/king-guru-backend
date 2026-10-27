@@ -39,6 +39,11 @@ def _normalise_text(s: str) -> str:
     return s
 
 
+def is_real_answer(text: str) -> bool:
+    """At least two letters, so a blank, a dot or '1' doesn't count."""
+    return sum(ch.isalpha() for ch in (text or "")) >= 2
+
+
 def correct_answer_for(question_type: str, payload: dict) -> str | None:
     """The answer to show the learner after they answer (D-39).
 
@@ -98,7 +103,12 @@ def score(question_type: str, payload: dict, response: dict) -> ScoringResult:
             accepted = [
                 _normalise_text(a) for a in payload.get("accepted_answers", [])
             ]
-            n, d = (1, 1) if user_norm in accepted else (0, 1)
+            if payload.get("accept_any"):
+                # Open question ("I am from ___"): any real answer counts (D-72).
+                ok = is_real_answer(str(raw_answer))
+            else:
+                ok = user_norm in accepted
+            n, d = (1, 1) if ok else (0, 1)
 
         case "correct_mistake":
             raw_answer = response.get("answer")
