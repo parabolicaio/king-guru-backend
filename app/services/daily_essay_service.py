@@ -37,6 +37,7 @@ _GRADE_THRESHOLDS = [
 ALREADY_SUBMITTED  = ("ESSAY_ALREADY_SUBMITTED",  "You have already submitted an essay today.", 409)
 ESSAY_NOT_AVAILABLE = ("ESSAY_NOT_AVAILABLE", "Daily Essay is not available for your level.", 403)
 NO_PROMPT_AVAILABLE = ("NO_PROMPT_AVAILABLE", "No essay prompt is available today.", 404)
+ESSAY_TOO_SHORT     = ("ESSAY_TOO_SHORT", "Your essay must be at least 100 characters.", 422)
 DRAFT_AFTER_SUBMIT  = ("ESSAY_ALREADY_SUBMITTED",  "Cannot save a draft — today's essay is already submitted.", 409)
 
 _LANGUAGE_NAMES = {"en": "English", "si": "Sinhala"}
@@ -147,6 +148,10 @@ _CEFR_RUBRIC: dict[str, dict] = {
 }
 
 _DEFAULT_RUBRIC_KEY = "intermediate"
+
+
+# The essay screen asks for 100-1500 characters (D-23).
+MIN_ESSAY_CHARS = 100
 
 
 def today_slst() -> date:
@@ -264,7 +269,17 @@ async def submit(
     - If a draft exists → promotes it (flips is_draft=FALSE, sets submitted_at).
     - If no prior row → creates a new submitted row directly.
     - If already submitted → raises ALREADY_SUBMITTED (409).
+    - Under 100 characters (ignoring surrounding spaces) → ESSAY_TOO_SHORT
+      (422), checked first so a short essay never uses up the day (D-23).
     """
+    if len((essay_text or "").strip()) < MIN_ESSAY_CHARS:
+        logger.info(
+            "daily_essay submit rejected user_id=%s chars=%d too short",
+            user["id"],
+            len((essay_text or "").strip()),
+        )
+        raise AppError(*ESSAY_TOO_SHORT)
+
     await _check_level_eligibility(db, user)
 
     today = today_slst()

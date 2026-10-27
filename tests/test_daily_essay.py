@@ -349,3 +349,45 @@ async def test_get_submission_not_found(async_client: AsyncClient, mock_conn: As
     )
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "ESSAY_NOT_FOUND"
+
+
+# ── D-23: essays under 100 characters are rejected before anything is saved ──
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text", ["I wake up.", "A" * 99, "   " + "A" * 98 + "   "])
+async def test_submit_too_short_returns_422_and_saves_nothing(
+    async_client: AsyncClient, mock_conn: AsyncMock, text: str
+):
+    with patch("app.api.v1.daily_essay._grade_in_background", new=AsyncMock()) as grade:
+        mock_conn.fetchrow.side_effect = [_user_row(with_level=True)]
+        resp = await async_client.post(
+            "/api/v1/daily-essay/submit",
+            json={"essay_prompt_id": _PROMPT_ID, "essay_text": text, "feedback_language": "en"},
+            headers=_auth_header(),
+        )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "ESSAY_TOO_SHORT"
+    grade.assert_not_called()
+    mock_conn.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_submit_exactly_100_chars_is_accepted(async_client: AsyncClient, mock_conn: AsyncMock):
+    with (
+        patch("app.api.v1.daily_essay._grade_in_background", new=AsyncMock()),
+        patch("app.services.streak.record_qualifying_activity", new=AsyncMock()),
+        patch("app.services.daily_goal_service.record_activity", new=AsyncMock()),
+    ):
+        mock_conn.fetchrow.side_effect = [
+            _user_row(with_level=True),
+            _level_row(essay_enabled=True),
+            None,
+            _prompt_row(),
+            _submission_row(is_draft=False),
+        ]
+        resp = await async_client.post(
+            "/api/v1/daily-essay/submit",
+            json={"essay_prompt_id": _PROMPT_ID, "essay_text": "A" * 100, "feedback_language": "en"},
+            headers=_auth_header(),
+        )
+    assert resp.status_code == 201
