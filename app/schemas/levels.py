@@ -18,6 +18,8 @@ class LevelResponse(BaseModel):
     payment_required: bool = False
     price_amount: Decimal | None = None
     price_currency: str = "LKR"
+    # Approved lessons in the level; 0 means nothing to sell yet (D-16).
+    lesson_count: int = 0
 
     # Pydantic v2 serializes Decimal to a JSON *string* by default (to avoid
     # float precision loss) — every non-Python client (mobile's Dart `as num`

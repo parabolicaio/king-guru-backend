@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.errors import (
     AppError,
     LEVEL_NOT_FOUND,
+    LEVEL_NO_LESSONS,
     LEVEL_NOT_PAID,
     LEVEL_PRICE_NOT_SET,
     PAYMENT_GATEWAY_ERROR,
@@ -67,6 +68,9 @@ async def start_checkout(db, user: dict, level_id: str) -> tuple[str, str]:
         raise AppError(*LEVEL_NOT_PAID)
     if level["price_amount"] is None:
         raise AppError(*LEVEL_PRICE_NOT_SET)
+    # Never sell a level that has nothing in it yet (D-16).
+    if not level["lesson_count"]:
+        raise AppError(*LEVEL_NO_LESSONS)
 
     reference = _new_reference()
     # Format to EXACTLY two decimals, e.g. "500.00". OnePay rebuilds the

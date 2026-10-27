@@ -31,6 +31,7 @@ async def list_levels(
                 payment_required=row["payment_required"],
                 price_amount=row["price_amount"],
                 price_currency=row["price_currency"],
+                lesson_count=row["lesson_count"],
             )
             for row in rows
         ]

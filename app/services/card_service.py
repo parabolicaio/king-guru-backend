@@ -15,6 +15,7 @@ from app.core.errors import (
     CARD_NOT_FOUND,
     CARD_NOT_OWNED,
     LEVEL_NOT_FOUND,
+    LEVEL_NO_LESSONS,
     LEVEL_NOT_PAID,
     LEVEL_PRICE_NOT_SET,
     PAYMENT_GATEWAY_ERROR,
@@ -151,6 +152,9 @@ async def charge_with_saved_card(db, user: dict, token_id: str, level_id: str) -
         raise AppError(*LEVEL_NOT_PAID)
     if level["price_amount"] is None:
         raise AppError(*LEVEL_PRICE_NOT_SET)
+    # Never sell a level that has nothing in it yet (D-16).
+    if not level["lesson_count"]:
+        raise AppError(*LEVEL_NO_LESSONS)
 
     amount = f"{Decimal(str(level['price_amount'])):.2f}"
     currency = level["price_currency"] or "LKR"

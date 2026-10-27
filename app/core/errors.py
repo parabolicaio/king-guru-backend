@@ -53,6 +53,7 @@ LEVEL_PAYMENT_REQUIRED = ("LEVEL_PAYMENT_REQUIRED", "This level requires payment
 # ── Payments ──────────────────────────────────────────────────────────────────
 LEVEL_NOT_PAID           = ("LEVEL_NOT_PAID", "This level doesn't require payment.",                          400)
 LEVEL_PRICE_NOT_SET      = ("LEVEL_PRICE_NOT_SET", "Pricing isn't configured for this level yet.",            409)
+LEVEL_NO_LESSONS         = ("LEVEL_NO_LESSONS", "This level has no lessons yet, so it can't be bought.",      409)
 PAYMENT_NOT_FOUND        = ("PAYMENT_NOT_FOUND", "Payment not found.",                                        404)
 PAYMENT_GATEWAY_ERROR    = ("PAYMENT_GATEWAY_ERROR", "Payment gateway error. Please try again.",              502)
 
