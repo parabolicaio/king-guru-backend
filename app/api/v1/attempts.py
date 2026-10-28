@@ -85,6 +85,12 @@ def _decode_and_validate_audio(audio_b64: str, audio_mime: str) -> bytes:
     return audio_bytes
 
 
+_SKIPPED_SUMMARY = {
+    "en": "Skipped: no microphone. This question counts as done, with no marks.",
+    "si": "මඟ හැරියා: මයික්‍රෆෝනයක් නැත. මෙම ප්‍රශ්නය ලකුණු නොමැතිව අවසන් ලෙස ගණන් ගැනේ.",
+}
+
+
 async def _score_pronunciation(
     user: asyncpg.Record | None,
     q_row: asyncpg.Record,
@@ -98,6 +104,32 @@ async def _score_pronunciation(
     from decimal import Decimal
     import httpx
     from app.core.config import settings
+
+    # D-17: a learner with no working microphone can skip. The attempt is
+    # recorded with no marks (so the lesson can still be completed) and no
+    # audio is uploaded or graded.
+    if response.get("skipped") is True:
+        lang = response.get("feedback_language", "en")
+        summary = _SKIPPED_SUMMARY.get(lang, _SKIPPED_SUMMARY["en"])
+        return (
+            scoring_service.ScoringResult(
+                score_fraction=Decimal("0"),
+                score_numerator=0,
+                score_denominator=20,
+                is_correct=False,
+            ),
+            {
+                "accuracy": 0.0,
+                "clarity": 0.0,
+                "fluency": 0.0,
+                "overall_score": 0.0,
+                "grade": "Skipped",
+                "summary": summary,
+                "feedback": {"accuracy": [], "clarity": [], "fluency": []},
+                "ai_model": "skipped",
+                "skipped": True,
+            },
+        )
 
     audio_b64: str | None = response.get("audio_data_base64")
     audio_mime: str | None = response.get("audio_mime_type")
@@ -337,7 +369,9 @@ async def submit_attempt(
                     is_correct=result.is_correct,
                 )
 
-            if q_row["purpose"] == "assessment":
+            # A skipped pronunciation question (no mic) doesn't earn a streak day (D-17).
+            skipped = bool(pronunciation_ai_feedback and pronunciation_ai_feedback.get("skipped"))
+            if q_row["purpose"] == "assessment" and not skipped:
                 sr = await streak_service.record_qualifying_activity(db, tracking_user_id)
                 streak_result = StreakResult(
                     status=sr.status,
