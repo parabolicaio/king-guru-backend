@@ -13,6 +13,7 @@ from app.schemas.users import (
     UserProfile,
 )
 from app.services import user_service
+from app.services.streak import live_streak
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -32,7 +33,7 @@ def _row_to_profile(row: asyncpg.Record) -> UserProfile:
         admin_role=row["admin_role"],
         subscription_tier=row["subscription_tier"],
         xp_total=row["xp_total"],
-        streak_current=row["streak_current"],
+        streak_current=live_streak(row["streak_current"], row.get("streak_last_activity_date")),
         streak_longest=row["streak_longest"],
         onboarding_completed=row["onboarding_completed_at"] is not None,
         placement_completed=row["placement_completed_at"] is not None,

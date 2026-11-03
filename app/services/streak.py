@@ -23,6 +23,21 @@ def today_slst() -> date:
     return datetime.now(tz=ZoneInfo("Asia/Colombo")).date()
 
 
+def live_streak(current: int | None, last_activity: date | None, today: date | None = None) -> int:
+    """The streak to show now (D-71).
+
+    The stored streak only resets on the next activity, so a learner who
+    stopped a week ago still has e.g. 2 stored. It is still alive if the
+    last activity was today or yesterday (SLST); otherwise it is 0.
+    With no last date we can't tell, so the stored value is returned.
+    """
+    current = current or 0
+    if last_activity is None:
+        return current
+    today = today or today_slst()
+    return current if last_activity >= today - timedelta(days=1) else 0
+
+
 @dataclass
 class StreakResult:
     status: str         # started | extended | maintained | unchanged

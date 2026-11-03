@@ -41,6 +41,7 @@ from app.services import achievement_service
 from app.services import pronunciation_service
 from app.services import scoring as scoring_service
 from app.services import streak as streak_service
+from app.services.streak import live_streak
 from app.services import vocabulary_mastery as mastery_service
 from app.services import xp as xp_service
 from app.services import progress as progress_service
@@ -547,7 +548,7 @@ async def get_streak(
     state = await get_streak_state(db, str(user["id"]))
     milestones = await get_streak_milestones(db)
 
-    current = state["streak_current"] if state else 0
+    current = live_streak(state["streak_current"], state["streak_last_activity_date"]) if state else 0
     next_days: int | None = None
     next_bonus: int | None = None
     for m in milestones:
