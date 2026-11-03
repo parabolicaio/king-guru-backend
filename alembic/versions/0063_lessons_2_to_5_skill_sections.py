@@ -479,7 +479,8 @@ def upgrade() -> None:
     for order, spec in LESSONS.items():
         row = bind.execute(text(
             "SELECT l.id::text FROM lesson l JOIN level lv ON lv.id = l.level_id "
-            "WHERE lv.code = 'beginner_a' AND l.lesson_order = :o AND l.deleted_at IS NULL"
+            # 0045 renamed beginner_a to beginner; accept both (see 0066).
+            "WHERE lv.code IN ('beginner', 'beginner_a') AND l.lesson_order = :o AND l.deleted_at IS NULL"
         ), {"o": order}).fetchone()
         if not row:
             continue
