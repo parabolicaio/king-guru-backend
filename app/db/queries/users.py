@@ -36,6 +36,7 @@ _SELECT_USER = """
         u.xp_total,
         u.streak_current,
         u.streak_longest,
+        u.streak_last_activity_date,
         u.onboarding_completed_at,
         u.placement_completed_at,
         u.current_level_id::text,

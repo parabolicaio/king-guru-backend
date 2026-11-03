@@ -18,6 +18,7 @@ from app.schemas.lessons import (
     UserProgressSummary,
 )
 from app.services.lesson_chain import get_lessons_with_progress
+from app.services.streak import live_streak
 from app.core.config import settings
 
 router = APIRouter(prefix="/api/v1/users/me", tags=["progress"])
@@ -68,7 +69,9 @@ async def get_progress(
     return UserProgressResponse(
         user=UserProgressSummary(
             xp_total=summary["xp_total"] if summary else 0,
-            streak_current=summary["streak_current"] if summary else 0,
+            streak_current=(
+                live_streak(summary["streak_current"], summary["streak_last_activity_date"]) if summary else 0
+            ),
             streak_longest=summary["streak_longest"] if summary else 0,
             streak_last_activity_date=last_date,
             current_level_id=user["current_level_id"],
