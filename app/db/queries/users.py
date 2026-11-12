@@ -42,6 +42,7 @@ _SELECT_USER = """
         u.current_level_id::text,
         lv.name AS current_level_name,
         u.subscription_tier,
+        u.leaderboard_hidden,
         u.deleted_at,
         u.created_at,
         u.updated_at
@@ -183,6 +184,7 @@ async def update_user_profile(
     role_tag: str | None = ...,            # type: ignore[assignment]
     english_level: str | None = ...,       # type: ignore[assignment]
     language_preference: str | None = ..., # type: ignore[assignment]
+    leaderboard_hidden: bool = ...,        # type: ignore[assignment]
 ) -> asyncpg.Record:
     """Update only the fields that were explicitly passed (not sentinel ...)."""
     sets: list[str] = []
@@ -204,6 +206,7 @@ async def update_user_profile(
     add("role_tag", role_tag)
     add("english_level", english_level)
     add("language_preference", language_preference)
+    add("leaderboard_hidden", leaderboard_hidden)
 
     if not sets:
         row = await get_user_by_id(conn, user_id)
