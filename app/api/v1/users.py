@@ -39,6 +39,7 @@ def _row_to_profile(row: asyncpg.Record) -> UserProfile:
         placement_completed=row["placement_completed_at"] is not None,
         current_level_id=row["current_level_id"],
         current_level_name=row["current_level_name"],
+        leaderboard_hidden=bool(row.get("leaderboard_hidden") or False),
         deleted_at=row["deleted_at"],
         created_at=row["created_at"],
     )
@@ -57,16 +58,12 @@ async def update_me(
     row: asyncpg.Record = Depends(get_current_user),
     conn: asyncpg.Connection = Depends(get_db),
 ) -> UserProfile:
-    updated = await update_user_profile(
-        conn,
-        str(row["id"]),
-        display_name=body.display_name,
-        avatar_url=body.avatar_url,
-        age_group=body.age_group,
-        role_tag=body.role_tag,
-        english_level=body.english_level,
-        language_preference=body.language_preference,
-    )
+    # Only the fields the client sent. Passing every field wrote NULL over
+    # the ones left out (e.g. changing the language cleared the age group).
+    fields = body.model_dump(include=body.model_fields_set)
+    if fields.get("leaderboard_hidden") is None:
+        fields.pop("leaderboard_hidden", None)
+    updated = await update_user_profile(conn, str(row["id"]), **fields)
     return _row_to_profile(updated)
 
 
