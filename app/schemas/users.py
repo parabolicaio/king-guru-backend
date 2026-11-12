@@ -30,6 +30,7 @@ class UserProfile(BaseModel):
     placement_completed: bool
     current_level_id: str | None
     current_level_name: str | None
+    leaderboard_hidden: bool = False
     deleted_at: datetime | None
     created_at: datetime
 
@@ -43,6 +44,7 @@ class UpdateProfileRequest(BaseModel):
     role_tag: str | None = None
     english_level: str | None = None
     language_preference: str | None = None
+    leaderboard_hidden: bool | None = None
 
     @field_validator("age_group")
     @classmethod

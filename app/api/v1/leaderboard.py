@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from app.core.config import settings
 from app.core.security import get_current_user
 from app.db.pool import get_db
-from app.db.queries.achievements import get_leaderboard
+from app.db.queries.achievements import get_leaderboard, get_user_rank, leaderboard_name
 from app.schemas.achievements import LeaderboardEntry, LeaderboardResponse
 
 router = APIRouter(prefix="/api/v1/leaderboard", tags=["leaderboard"])
@@ -34,7 +34,7 @@ async def get_leaderboard_endpoint(
             LeaderboardEntry(
                 rank=int(r["rank"]),
                 user_id=r["id"],
-                display_name=r["display_name"],
+                display_name=leaderboard_name(r["display_name"], r["full_name"]),
                 avatar_url=settings.build_cdn_url(r["avatar_url"]),
                 xp_total=r["xp_total"],
                 level_code=r["level_code"],
@@ -42,25 +42,10 @@ async def get_leaderboard_endpoint(
             )
         )
 
-    # If current user not in top-N, compute their rank via COUNT
+    # Not in the top N: their rank among the people shown. None when they
+    # are not shown at all (hidden, or no XP yet).
     if current_user_rank is None:
-        rank_row = await db.fetchrow(
-            """
-            SELECT (
-                SELECT COUNT(*)
-                FROM "user" u2
-                WHERE u2.xp_total > u1.xp_total
-                  AND u2.deleted_at IS NULL
-                  AND u2.is_guest = FALSE
-                  AND u2.onboarding_completed_at IS NOT NULL
-            ) + 1 AS rank
-            FROM "user" u1
-            WHERE u1.id = $1::uuid
-            """,
-            current_user_id,
-        )
-        if rank_row:
-            current_user_rank = int(rank_row["rank"])
+        current_user_rank = await get_user_rank(db, current_user_id)
 
     return LeaderboardResponse(
         data=entries,

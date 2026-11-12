@@ -63,6 +63,7 @@ def _row_to_profile(row: asyncpg.Record) -> UserProfile:
         placement_completed=row["placement_completed_at"] is not None,
         current_level_id=row["current_level_id"],
         current_level_name=row["current_level_name"],
+        leaderboard_hidden=bool(row.get("leaderboard_hidden") or False),
         deleted_at=row["deleted_at"],
         created_at=row["created_at"],
     )
